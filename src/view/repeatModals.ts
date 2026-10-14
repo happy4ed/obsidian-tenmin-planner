@@ -5,7 +5,8 @@ import { Planner } from "../model/planner";
 import { describeRule, newRule, nextOccurrences, RepeatEnd, RepeatFreq, RepeatRule, slotTime, WEEKDAY_KO, weekdayIndex, MonthlyMode } from "../model/repeat";
 import { UUID } from "../model/uuid";
 
-const FREQ: Record<RepeatFreq, string> = { daily: "매일", weekly: "주마다", weekdays: "요일마다", monthly: "달마다", yearly: "연마다" };
+/** "주마다" 는 요일을 여러 개 고른다 (월 · 화 · 수 …). 예전 "weekly" (시작일 요일 하나) 도 같은 화면으로 연다 */
+const FREQ: Partial<Record<RepeatFreq, string>> = { daily: "매일", weekdays: "주마다 (요일 고르기)", monthly: "달마다", yearly: "연마다" };
 const UNIT: Record<RepeatFreq, string> = { daily: "일마다", weekly: "주마다", weekdays: "주마다", monthly: "달마다", yearly: "년마다" };
 const short = (d: Date) => `${d.getMonth() + 1}/${d.getDate()} ${WEEKDAY_KO[weekdayIndex(d)]}`;
 
@@ -36,7 +37,7 @@ export function repeatRow(el: HTMLElement, app: App, p: Planner, r: RepeatRule, 
   const next = nextOccurrences(r, today, 1)[0];
   const cat = p.category(r.cat);
   new Setting(el)
-    .setName(`${r.text || (r.paint ? "타임테이블" : "(할 일 없음)")}${cat ? `  · ${cat.name}` : ""}`)
+    .setName(`${r.text || (r.paint ? "타임테이블 일정" : r.meal ? "밥시간" : "(할 일 없음)")}${cat ? `  · ${cat.name}` : ""}`)
     .setDesc(`${describeRule(r)} · ${next ? `다음 ${short(next)}` : "더 생기지 않아요"}`)
     .addExtraButton((b) => b.setIcon(r.paused ? "play" : "pause").setTooltip(r.paused ? "다시 반복" : "잠깐 멈춤")
       .onClick(() => { p.updateRepeat(r.id, (x) => { x.paused = !x.paused; }); refresh(); }))
@@ -71,6 +72,7 @@ export class RepeatEditModal extends Modal {
     private adopt?: { date: Date; taskId: UUID }) {
     super(app);
     this.r = structuredClone(init);
+    if (this.r.freq === "weekly") { this.r.freq = "weekdays"; this.r.weekdays = [weekdayIndex(this.r.start)]; }
   }
 
   onOpen(): void { this.render(); }
@@ -89,7 +91,7 @@ export class RepeatEditModal extends Modal {
     });
 
     // 타임테이블 칠하기: 시작 ~ 끝 시각 (10분 칸)
-    const paintRow = new Setting(el).setName("타임테이블 칠하기");
+    const paintRow = new Setting(el).setName("타임테이블 일정");
     paintRow.addToggle((t) => t.setValue(!!r.paint).onChange((v) => {
       r.paint = v ? r.paint ?? { from: 18, to: 23 } : null;
       if (v && r.cat == null) r.cat = this.p.categories[0]?.id ?? null;
@@ -106,7 +108,23 @@ export class RepeatEditModal extends Modal {
         for (const i of times) if (i >= pr.from) d.addOption(String(i), `~ ${slotTime(i, true)}`);
         d.setValue(String(pr.to)).onChange((v) => { pr.to = Number(v); this.preview(); });
       });
-      paintRow.setDesc(`비어 있는 칸만 칠해요 (이미 칠한 칸은 그대로). 지우개로 지운 날은 다시 칠하지 않아요.`);
+      paintRow.setDesc("반복하는 날마다 이 시간에 일정을 넣어요 (제목 = 할 일). 지운 날은 다시 넣지 않아요.");
+    }
+
+    // 밥시간: 시작 ~ 끝
+    const mealRow = new Setting(el).setName("밥시간 넣기");
+    mealRow.addToggle((t) => t.setValue(!!r.meal).onChange((v) => { r.meal = v ? r.meal ?? { from: 36, to: 41 } : null; this.render(); }));
+    if (r.meal) {
+      const mr = r.meal;
+      const times = Array.from({ length: 144 }, (_, i) => i);
+      mealRow.addDropdown((d) => {
+        for (const i of times) d.addOption(String(i), slotTime(i));
+        d.setValue(String(mr.from)).onChange((v) => { mr.from = Number(v); if (mr.to < mr.from) mr.to = mr.from; this.render(); });
+      });
+      mealRow.addDropdown((d) => {
+        for (const i of times) if (i >= mr.from) d.addOption(String(i), `~ ${slotTime(i, true)}`);
+        d.setValue(String(mr.to)).onChange((v) => { mr.to = Number(v); this.preview(); });
+      });
     }
 
     new Setting(el).setName("반복").addDropdown((d) => {
@@ -117,7 +135,7 @@ export class RepeatEditModal extends Modal {
         this.render();
       });
     });
-    new Setting(el).setName("간격").setDesc(`${r.interval === 1 ? "1" : r.interval} ${UNIT[r.freq]}`)
+    new Setting(el).setName("간격").setDesc(`${r.interval} ${UNIT[r.freq]}`)
       .addText((t) => {
         t.inputEl.type = "number"; t.inputEl.min = "1"; t.inputEl.max = "99"; t.inputEl.style.width = "64px";
         t.setValue(String(r.interval)).onChange((v) => { r.interval = Math.max(1, Math.min(99, Math.floor(Number(v)) || 1)); this.preview(); });
@@ -145,8 +163,13 @@ export class RepeatEditModal extends Modal {
       }).setValue(r.monthly).onChange((v) => { r.monthly = v as MonthlyMode; this.preview(); }));
     }
 
-    new Setting(el).setName("시작일").setDesc("이 날부터 반복해요. 주마다 · 달마다 · 연마다는 이 날을 기준으로 해요")
+    new Setting(el).setName("시작일").setDesc("주마다 간격 · 달마다 · 연마다는 이 날을 기준으로 해요")
       .addText((t) => { t.inputEl.type = "date"; t.setValue(Dates.key(r.start)).onChange((v) => { const d = Dates.parseKey(v); if (d) { r.start = d; this.render(); } }); });
+    // 적용 범위: 이 날부터 앞으로만 · 지난 날에도 (플래너 시작일부터, 바로 채움)
+    const pastFrom = this.p.book ? Dates.day(this.p.book.start) : Dates.addDays(-365, Dates.day(new Date()));
+    new Setting(el).setName("적용").setDesc(r.since ? `${Dates.key(pastFrom)} 부터 지난 날에도 바로 넣어요` : "시작일부터 앞으로만 넣어요")
+      .addDropdown((d) => d.addOptions({ future: "이 날부터 앞으로만", past: "지난 날에도 (플래너 시작일부터)" })
+        .setValue(r.since ? "past" : "future").onChange((v) => { r.since = v === "past" ? pastFrom : null; this.render(); }));
 
     const endRow = new Setting(el).setName("끝");
     endRow.addDropdown((d) => d.addOptions({ never: "계속", until: "날짜까지", count: "횟수만큼" }).setValue(r.end.type).onChange((v) => {
@@ -172,16 +195,18 @@ export class RepeatEditModal extends Modal {
     new Setting(el).addButton((b) => b.setButtonText("취소").onClick(() => this.close()))
       .addButton((b) => b.setButtonText(this.id ? "저장" : "반복 만들기").setCta().onClick(() => {
         r.text = r.text.trim();
-        if (!r.text && !r.paint) { this.setPreview("할 일을 적거나 타임테이블 칠하기를 켜 주세요."); return; }
+        if (!r.text && !r.paint && !r.meal) { this.setPreview("할 일을 적거나, 타임테이블 일정 · 밥시간을 켜 주세요."); return; }
         if (r.paint && r.cat == null) { this.setPreview("칠할 형광펜을 골라 주세요."); return; }
         if (r.freq === "weekdays" && !r.weekdays.length) { this.setPreview("요일을 하나 이상 골라 주세요."); return; }
         if (this.id) {
           const v = r;
-          this.p.updateRepeat(this.id, (x) => Object.assign(x, { ...v, id: x.id, exceptions: x.exceptions, paintedDays: x.paintedDays }));
+          this.p.updateRepeat(this.id, (x) => Object.assign(x, { ...v, id: x.id, exceptions: x.exceptions, paintedDays: x.paintedDays, mealDays: x.mealDays }));
+          if (v.since) this.p.backfillRepeat(this.id);
         } else {
-          const { id: _id, exceptions: _e, ...rest } = r;
+          const { id: _id, exceptions: _e, paintedDays: _p, mealDays: _m, ...rest } = r;
           const nid = this.p.addRepeat(rest);
           if (this.adopt) this.p.adoptAsRepeat(this.adopt.date, this.adopt.taskId, nid);
+          if (r.since) this.p.backfillRepeat(nid);
         }
         this.close();
         this.done();

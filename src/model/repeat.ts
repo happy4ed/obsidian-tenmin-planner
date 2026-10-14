@@ -38,6 +38,13 @@ export interface RepeatRule {
   paint: { from: number; to: number } | null;
   /** 이미 칠한 날 (yyyy-MM-dd) — 지우개로 지워도 다시 칠하지 않게 */
   paintedDays: string[];
+  /** 밥시간: 칸 from ~ to. null 이면 넣지 않는다 */
+  meal: { from: number; to: number } | null;
+  /** 이미 밥시간을 넣은 날 — 지워도 다시 넣지 않게 */
+  mealDays: string[];
+  /** 적용 시작: 이 날부터 반복 (지난 날에도 넣을 때 시작일보다 앞). null 이면 시작일부터.
+   *  주마다 · 달마다 · 연마다의 기준은 그대로 시작일이다 */
+  since: Date | null;
 }
 
 export const WEEKDAY_KO = ["월", "화", "수", "목", "금", "토", "일"];
@@ -53,7 +60,8 @@ const nthOfMonth = (d: Date) => Math.floor((d.getDate() - 1) / 7) + 1;
 
 export function newRule(id: UUID, start: Date, text = "", cat: number | null = null): RepeatRule {
   return { id, text, cat, freq: "daily", interval: 1, weekdays: [weekdayIndex(start)], monthly: "date",
-    start: Dates.day(start), end: { type: "never" }, skipDayOff: false, paused: false, exceptions: [], paint: null, paintedDays: [] };
+    start: Dates.day(start), end: { type: "never" }, skipDayOff: false, paused: false, exceptions: [], paint: null, paintedDays: [],
+    meal: null, mealDays: [], since: null };
 }
 
 /** 칸 번호 → "09:30" (0 = 06:00, 10분 칸). end 면 칸이 끝나는 시각 */
@@ -62,25 +70,31 @@ export function slotTime(i: number, end = false): string {
   return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 }
 
+/** 음수에도 맞는 나머지 (지난 날에도 넣을 때 시작일 앞의 날) */
+const mod = (a: number, n: number) => ((a % n) + n) % n;
+
+/** 적용이 시작되는 날 */
+export const firstDay = (r: RepeatRule) => Dates.day(r.since && r.since < r.start ? r.since : r.start);
+
 /** 규칙 모양만 보고 그날이 반복하는 날인지 (끝 · 횟수 · 예외 · 멈춤은 보지 않는다) */
 function matches(r: RepeatRule, d: Date): boolean {
   const s = Dates.day(r.start), x = Dates.day(d);
-  if (x < s) return false;
+  if (x < firstDay(r)) return false;
   const n = Math.max(1, Math.floor(r.interval) || 1);
   switch (r.freq) {
-    case "daily": return Dates.daysBetween(s, x) % n === 0;
+    case "daily": return mod(Dates.daysBetween(s, x), n) === 0;
     case "weekly": {
       const days = Dates.daysBetween(s, x);
-      return days % 7 === 0 && (days / 7) % n === 0;
+      return mod(days, 7) === 0 && mod(days / 7, n) === 0;
     }
     case "weekdays": {
       if (!r.weekdays.includes(weekdayIndex(x))) return false;
-      const weeks = Math.floor(Dates.daysBetween(Dates.weekStart(s), Dates.weekStart(x)) / 7);
-      return weeks % n === 0;
+      const weeks = Math.round(Dates.daysBetween(Dates.weekStart(s), Dates.weekStart(x)) / 7);
+      return mod(weeks, n) === 0;
     }
     case "monthly": {
       const mm = monthsBetween(s, x);
-      if (mm % n !== 0) return false;
+      if (mod(mm, n) !== 0) return false;
       if (r.monthly === "last") return x.getDate() === lastDay(x.getFullYear(), x.getMonth());
       if (r.monthly === "nth") {
         const k = nthOfMonth(s);
@@ -94,7 +108,7 @@ function matches(r: RepeatRule, d: Date): boolean {
     }
     case "yearly": {
       const yy = x.getFullYear() - s.getFullYear();
-      if (yy % n !== 0 || x.getMonth() !== s.getMonth()) return false;
+      if (mod(yy, n) !== 0 || x.getMonth() !== s.getMonth()) return false;
       return x.getDate() === Math.min(s.getDate(), lastDay(x.getFullYear(), x.getMonth()));
     }
   }
@@ -106,9 +120,9 @@ export function occursOn(r: RepeatRule, d: Date): boolean {
   if (r.exceptions.includes(Dates.key(d))) return false;
   if (r.end.type === "until" && Dates.day(d) > Dates.day(r.end.until)) return false;
   if (r.end.type === "count") {
-    // 시작일부터 그날까지 몇 번째인지 센다 (지운 날도 한 번으로 친다)
+    // 적용 시작부터 그날까지 몇 번째인지 센다 (지운 날도 한 번으로 친다)
     let n = 0;
-    for (let x = Dates.day(r.start); x <= Dates.day(d); x = Dates.addDays(1, x)) {
+    for (let x = firstDay(r); x <= Dates.day(d); x = Dates.addDays(1, x)) {
       if (matches(r, x)) n++;
       if (n > r.end.count) return false;
     }
@@ -119,7 +133,7 @@ export function occursOn(r: RepeatRule, d: Date): boolean {
 /** from 부터 다음 k 번 (미리보기) */
 export function nextOccurrences(r: RepeatRule, from: Date, k = 5, horizonDays = 800): Date[] {
   const out: Date[] = [];
-  const start = Dates.day(from) < Dates.day(r.start) ? Dates.day(r.start) : Dates.day(from);
+  const start = Dates.day(from) < firstDay(r) ? firstDay(r) : Dates.day(from);
   for (let i = 0, x = start; i < horizonDays && out.length < k; i++, x = Dates.addDays(1, x)) {
     if (occursOn(r, x)) out.push(x);
   }
@@ -130,6 +144,8 @@ export function nextOccurrences(r: RepeatRule, from: Date, k = 5, horizonDays = 
 export const occurrenceId = (r: RepeatRule, d: Date) => uuidV5(r.id, `repeat|${Dates.key(d)}`);
 /** 그날 만든 타임테이블 일정의 id */
 export const repeatEventId = (r: RepeatRule, d: Date) => uuidV5(r.id, `paint|${Dates.key(d)}`);
+/** 그날 만든 밥시간의 id */
+export const repeatMealId = (r: RepeatRule, d: Date) => uuidV5(r.id, `meal|${Dates.key(d)}`);
 
 /** "매주 화 · 목", "2주마다 월요일", "매월 둘째 화요일" … */
 export function describeRule(r: RepeatRule): string {
@@ -157,8 +173,10 @@ export function describeRule(r: RepeatRule): string {
     case "yearly": base = `${n === 1 ? "매년" : `${n}년마다`} ${s.getMonth() + 1}월 ${s.getDate()}일`; break;
   }
   const end = r.end.type === "until" ? ` · ${Dates.key(r.end.until)} 까지` : r.end.type === "count" ? ` · ${r.end.count}번` : "";
-  const paint = r.paint ? ` · ${slotTime(r.paint.from)}–${slotTime(r.paint.to, true)} 칠하기` : "";
-  return `${base}${paint}${end}${r.skipDayOff ? " · DAY OFF 빼고" : ""}${r.paused ? " · 멈춤" : ""}`;
+  const paint = r.paint ? ` · ${slotTime(r.paint.from)}–${slotTime(r.paint.to, true)} 일정` : "";
+  const meal = r.meal ? ` · 밥 ${slotTime(r.meal.from)}–${slotTime(r.meal.to, true)}` : "";
+  const since = r.since && r.since < r.start ? ` · ${Dates.key(r.since)} 부터` : "";
+  return `${base}${paint}${meal}${since}${end}${r.skipDayOff ? " · DAY OFF 빼고" : ""}${r.paused ? " · 멈춤" : ""}`;
 }
 
 // ── 파일 ─────────────────────────────────────────────
@@ -184,6 +202,9 @@ export function decodeRule(v: unknown): RepeatRule | null {
     exceptions: Array.isArray(o.exceptions) ? o.exceptions.filter((x): x is string => typeof x === "string") : [],
     paint: decodePaint(o.paint),
     paintedDays: Array.isArray(o.paintedDays) ? o.paintedDays.filter((x): x is string => typeof x === "string") : [],
+    meal: decodePaint(o.meal),
+    mealDays: Array.isArray(o.mealDays) ? o.mealDays.filter((x): x is string => typeof x === "string") : [],
+    since: Dates.fromISO(o.since),
   };
 }
 
@@ -204,5 +225,8 @@ export function encodeRule(r: RepeatRule): Raw {
   if (r.exceptions.length) o.exceptions = r.exceptions;
   if (r.paint) o.paint = { from: r.paint.from, to: r.paint.to };
   if (r.paintedDays.length) o.paintedDays = r.paintedDays;
+  if (r.meal) o.meal = { from: r.meal.from, to: r.meal.to };
+  if (r.mealDays.length) o.mealDays = r.mealDays;
+  if (r.since) o.since = Dates.toISO(r.since);
   return o;
 }

@@ -101,7 +101,7 @@ describe("타임테이블 반복 칠하기", () => {
     p.applyRepeats([D(10, 21), D(10, 22)]);
     expect(p.day(D(10, 21)).slots[18]).toBe(1);
     expect(p.day(D(10, 22)).slots[18]).toBe(-1);
-    expect(describeRule(p.repeats[0])).toBe("매주 수 · 09:00–07:30 칠하기".replace("07:30", "10:30"));
+    expect(describeRule(p.repeats[0])).toBe("매주 수 · 09:00–10:30 일정");
   });
   it("반복 지우기 (앞으로도) 는 미래에 칠한 칸도 지운다", () => {
     const p = new Planner(emptyData(), null, wrap);
@@ -110,5 +110,32 @@ describe("타임테이블 반복 칠하기", () => {
     expect(p.day(D(1, 1, 2099)).slots.slice(0, 3)).toEqual([1, 1, 1]);
     p.removeRepeat(p.repeats[0].id, true);
     expect(p.data.days["2099-01-01"]).toBeUndefined();
+  });
+});
+
+describe("밥시간 반복 · 지난 날에도 · 요일 여러 개", () => {
+  const wrap = approxWrap();
+  it("밥시간을 반복하는 날마다 넣고, 지운 날은 다시 넣지 않는다", () => {
+    const p = new Planner(emptyData(), null, wrap);
+    p.addRepeat({ ...newRule("x", D(10, 14)), meal: { from: 36, to: 41 } });
+    p.applyRepeats([D(10, 14), D(10, 15)]);
+    expect(p.day(D(10, 15)).notes.map((n) => [n.kind, n.start, n.end])).toEqual([["meal", 36, 41]]);
+    p.removeNote(D(10, 15), p.day(D(10, 15)).notes[0].id);
+    expect(p.applyRepeats([D(10, 15)])).toBe(false);
+    expect(describeRule(p.repeats[0])).toBe("매일 · 밥 12:00–13:00");
+  });
+  it("지난 날에도: 적용 시작부터 어제까지 바로 넣고, 기준(요일 · 날짜)은 시작일 그대로", () => {
+    const today = Dates.day(new Date());
+    const p = new Planner(emptyData(), null, wrap);
+    const id = p.addRepeat({ ...newRule("x", today, "정리"), freq: "monthly", monthly: "date", since: Dates.addDays(-70, today) });
+    p.backfillRepeat(id);
+    const made = Object.entries(p.data.days).filter(([, r]) => r.tasks.some((t) => t.text === "정리")).map(([k]) => Number(k.slice(8)));
+    expect(made.length).toBeGreaterThanOrEqual(2);
+    expect(made.every((d) => d === today.getDate() || d >= 28)).toBe(true);
+  });
+  it("매주 월 · 화 · 수만", () => {
+    const r = rule({ freq: "weekdays", weekdays: [0, 1, 2] });
+    expect(keys(nextOccurrences(r, D(10, 14), 4))).toEqual(["10-14", "10-19", "10-20", "10-21"]);
+    expect(describeRule(r)).toBe("매주 월 · 화 · 수");
   });
 });

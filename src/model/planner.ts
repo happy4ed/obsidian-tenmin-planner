@@ -9,7 +9,7 @@ import {
 import { assignTaskRows, freeTaskRow, hasRecord, insertCarried, insertTask, isEmptyDay, joinCategoryGroup, lastTaskLine, taskRowsReady } from "./day";
 import { Wrap } from "./ruled";
 import { newPenName, suggestPenColor } from "./pens";
-import { occurrenceId, occursOn, repeatEventId, RepeatRule } from "./repeat";
+import { firstDay, occurrenceId, occursOn, repeatEventId, repeatMealId, RepeatRule } from "./repeat";
 import { countedMinutes, eventsFromSlots, minutesByCat, normEvent, slotsFromEvents, subtractRange, TimeEvent } from "./events";
 
 /** 칸 색만 있고 일정이 없는 날 → 일정으로 */
@@ -220,8 +220,8 @@ export class Planner {
   get repeats(): RepeatRule[] { return this.data.prefs.repeats; }
 
   /** 새 반복. 시작일부터 바로 그날 할 일도 만든다 */
-  addRepeat(r: Omit<RepeatRule, "id" | "exceptions" | "paintedDays">): UUID {
-    const rule: RepeatRule = { ...r, id: newUUID(), exceptions: [], paintedDays: [] };
+  addRepeat(r: Omit<RepeatRule, "id" | "exceptions" | "paintedDays" | "mealDays">): UUID {
+    const rule: RepeatRule = { ...r, id: newUUID(), exceptions: [], paintedDays: [], mealDays: [] };
     this.editPrefs((p) => p.repeats.push(rule));
     return rule.id;
   }
@@ -243,7 +243,9 @@ export class Planner {
         const occ = occurrenceId(rule, d);
         const hasTask = r.tasks.some((t) => sameUUID(t.id, occ) && t.mark === Mark.none);
         const painted = rule.paint && rule.cat != null && rule.paintedDays.includes(k);
-        if (!hasTask && !painted) continue;
+        const mealed = rule.meal && rule.mealDays.includes(k);
+        if (!hasTask && !painted && !mealed) continue;
+        if (mealed) { const mid = repeatMealId(rule, d); r.notes = r.notes.filter((n) => !sameUUID(n.id, mid)); }
         r.tasks = r.tasks.filter((t) => !(sameUUID(t.id, occ) && t.mark === Mark.none));
         if (painted) {
           const eid = repeatEventId(rule, d);
@@ -267,6 +269,16 @@ export class Planner {
     });
   }
 
+  /** 지난 날에도: 적용 시작부터 어제까지 바로 넣는다 (책 기간 안만) */
+  backfillRepeat(id: UUID): void {
+    const rule = this.repeats.find((x) => sameUUID(x.id, id));
+    if (!rule) return;
+    const today = Dates.day(new Date());
+    const days: Date[] = [];
+    for (let d = firstDay(rule); d < today; d = Dates.addDays(1, d)) days.push(d);
+    this.applyRepeats(days);
+  }
+
   /** 반복으로 생긴 할 일이 그날 몇 개 있는지 (설정 · 지우기 안내용) */
   repeatMadeCount(id: UUID): number {
     const rule = this.repeats.find((x) => sameUUID(x.id, id));
@@ -274,7 +286,7 @@ export class Planner {
     let n = 0;
     for (const [k, r] of Object.entries(this.data.days)) {
       const occ = occurrenceId(rule, Dates.parseKey(k)!);
-      if (r.tasks.some((t) => sameUUID(t.id, occ)) || rule.paintedDays.includes(k)) n++;
+      if (r.tasks.some((t) => sameUUID(t.id, occ)) || rule.paintedDays.includes(k) || rule.mealDays.includes(k)) n++;
     }
     return n;
   }
@@ -306,8 +318,10 @@ export class Planner {
         return !cur?.tasks.some((t) => sameUUID(t.id, occ));
       });
       const paints = live.filter((rule) => rule.paint && rule.cat != null && !rule.paintedDays.includes(k));
-      if (!todo.length && !paints.length) continue;
+      const meals = live.filter((rule) => rule.meal && !rule.mealDays.includes(k));
+      if (!todo.length && !paints.length && !meals.length) continue;
       for (const rule of paints) rule.paintedDays.push(k);
+      for (const rule of meals) rule.mealDays.push(k);
       this.editDay(d, (r) => {
         for (const rule of todo) {
           insertCarried(r, { id: occurrenceId(rule, d), text: rule.text, mark: Mark.none, cat: rule.cat, carriedFrom: null, row: null }, this.wrap);
@@ -317,6 +331,10 @@ export class Planner {
           if (!r.events.some((e) => sameUUID(e.id, id))) {
             r.events.push(normEvent({ id, from: rule.paint!.from, to: rule.paint!.to, cat: rule.cat, title: rule.text, note: "", place: "" }));
           }
+        }
+        for (const rule of meals) {
+          const id = repeatMealId(rule, d);
+          if (!r.notes.some((n) => sameUUID(n.id, id))) r.notes.push({ id, kind: "meal", start: rule.meal!.from, end: rule.meal!.to, text: "" });
         }
       });
       made = true;

@@ -45,6 +45,22 @@ export function Timetable({ date, notes, accent, events, x, y, cellW, rowH, disa
   const [hover, setHover] = useState<string | null>(null);
   const noteTool = c.tool === TEXT_TOOL || c.tool === MEAL_TOOL;
 
+  // 선택한 일정은 Delete · Backspace 로 바로 지운다 (글을 쓰는 중이면 그대로)
+  useEffect(() => {
+    if (!selected) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Delete" && e.key !== "Backspace") return;
+      const t = e.target as HTMLElement | null;
+      if (t?.closest("input, textarea, [contenteditable=true]")) return;
+      e.preventDefault();
+      e.stopPropagation();
+      p.removeEvent(date, selected);
+      setSelected(null);
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [selected, date.getTime()]);
+
   // 다른 날로 넘기면 선택을 푼다
   useEffect(() => { setSelected(null); setHover(null); }, [date.getTime()]);
   // 바깥을 누르면 선택을 푼다
@@ -301,7 +317,12 @@ function MealNote({ date, note, accent, cellW, rowH, disabled }: { date: Date; n
         onContextMenu={(ev) => {
           if (disabled) return;
           ev.preventDefault();
-          new Menu().addItem((it) => it.setTitle("밥시간 지우기").onClick(() => c.planner.removeNote(date, note.id))).showAtMouseEvent(ev as unknown as MouseEvent);
+          const m = new Menu();
+          m.addItem((it) => it.setTitle("밥시간 지우기").setIcon("trash").onClick(() => c.planner.removeNote(date, note.id)));
+          m.addSeparator();
+          m.addItem((it) => it.setTitle(`밥시간 ${slotTime(s)}–${slotTime(e, true)} 을 반복으로`).setDisabled(true));
+          addQuickRepeatItems(m, c.app, c.planner, date, { text: "", cat: null, meal: { from: s, to: e } });
+          m.showAtMouseEvent(ev as unknown as MouseEvent);
         }}>🍴</div>
     </>
   );
