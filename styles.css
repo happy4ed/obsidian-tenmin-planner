@@ -1,0 +1,76 @@
+/* 10분 플래너 — 종이는 테마와 상관없이 종이색, 바깥(팔레트 · 여백)은 Obsidian 테마를 따른다 */
+
+.tmp-view { padding: 0 !important; }
+.tmp-root { display: flex; flex-direction: column; height: 100%; outline: none; }
+.tmp-empty { padding: 24px; color: var(--text-muted); white-space: pre-wrap; }
+
+/* 도구 팔레트 */
+.tmp-palette {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  padding: 8px 12px; border-bottom: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+}
+.tmp-palette button { padding: 4px 10px; font-size: var(--font-ui-small); }
+.tmp-nav { display: flex; align-items: center; gap: 4px; }
+.tmp-nav-date { min-width: 120px; text-align: center; font-variant-numeric: tabular-nums; font-size: var(--font-ui-small); }
+.tmp-pens { display: flex; flex-wrap: wrap; gap: 4px; flex: 1 1 320px; min-width: 0; }
+.tmp-pen { display: inline-flex; align-items: center; gap: 6px; flex: none; white-space: nowrap; }
+.tmp-palette > button, .tmp-nav button { white-space: nowrap; }
+.tmp-pen.is-active { font-weight: 700; box-shadow: inset 0 -3px 0 var(--interactive-accent); }
+.tmp-swatch { width: 14px; height: 14px; border-radius: 4px; display: inline-block; }
+.tmp-gear { margin-left: auto; }
+
+/* 종이 */
+.tmp-scroller { flex: 1; overflow: auto; padding: 12px; background: var(--background-primary-alt); }
+.tmp-sheet { margin: 0 auto; position: relative; box-shadow: 0 2px 10px rgba(0, 0, 0, .12); border-radius: 6px; overflow: hidden; }
+.tmp-scale { transform-origin: 0 0; width: 1277px; height: 2000px; }
+.tmp-page { position: relative; color: #34333A; font-family: var(--font-text); user-select: none; }
+.tmp-page > * { position: absolute; }
+.tmp-form { left: 0; top: 0; pointer-events: none; }
+
+.tmp-hit, .tmp-cat-cell, .tmp-corner { cursor: pointer; }
+.tmp-hit:hover { background: rgba(0, 0, 0, .025); }
+.tmp-cat-cell { border-radius: 6px; }
+.tmp-cat-cell:hover { background: rgba(0, 0, 0, .04); }
+.tmp-cat-tag { display: flex; align-items: center; justify-content: center; text-align: center; overflow: hidden;
+  white-space: nowrap; pointer-events: none; }
+
+.tmp-entry { cursor: text; }
+.tmp-entry > .tmp-line { position: absolute; left: 0; right: 0; white-space: pre; overflow: hidden; }
+.tmp-entry.is-center > .tmp-line { text-align: center; }
+.tmp-line-text { padding: 0 4px; border-radius: 3px; }
+
+.tmp-editor {
+  position: absolute; resize: none; border: none; outline: none; padding: 0 4px; margin: 0;
+  background: rgba(255, 255, 255, .7); color: #34333A; font-family: var(--font-text); overflow: hidden;
+  box-shadow: 0 0 0 2px rgba(58, 134, 212, .35); border-radius: 4px; user-select: text;
+}
+.tmp-editor.is-center { text-align: center; }
+
+.tmp-mark { display: flex; align-items: center; justify-content: center; padding: 0; background: transparent !important;
+  border: none; box-shadow: none !important; cursor: pointer; }
+.tmp-mark:hover { transform: scale(1.12); }
+
+.tmp-date { display: flex; align-items: center; justify-content: center; font-size: 68px; letter-spacing: 2px; pointer-events: none; }
+.tmp-date-text { padding: 0 10px; }
+.tmp-dday { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; cursor: pointer; }
+.tmp-dday-row { display: flex; align-items: baseline; gap: 14px; white-space: nowrap; }
+.tmp-dday-empty { font-size: 37px; color: #C9C5CB; }
+
+.tmp-comment-view { display: flex; align-items: center; justify-content: center; text-align: center; white-space: pre-wrap;
+  overflow: hidden; cursor: text; }
+.tmp-comment { text-align: center; padding-top: 30px; }
+.tmp-comment-menu { padding: 0; font-size: 18px; line-height: 1; background: transparent !important; border: none;
+  box-shadow: none !important; color: #2B2B2F; cursor: pointer; }
+.tmp-dayoff { display: flex; align-items: center; justify-content: center; font-size: 96px; font-weight: 900; letter-spacing: 4px;
+  pointer-events: none; }
+
+.tmp-total { display: flex; align-items: center; justify-content: center; font-weight: 900; font-variant-numeric: tabular-nums;
+  letter-spacing: -1.5px; pointer-events: none; }
+.tmp-total .d { font-size: 98px; }
+.tmp-total .u { font-size: 50px; }
+
+.tmp-timetable { cursor: crosshair; touch-action: none; }
+.tmp-timetable.is-eraser { cursor: cell; }
+.tmp-bar { position: absolute; opacity: .86; mix-blend-mode: multiply; border-radius: 3px; pointer-events: none; }
+.tmp-note { position: absolute; pointer-events: none; white-space: nowrap; overflow: hidden; color: #34333A; }

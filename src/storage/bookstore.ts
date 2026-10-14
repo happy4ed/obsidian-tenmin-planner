@@ -31,6 +31,8 @@ export class BookStore {
   library: Library = { books: [], activeID: null, sampleSeeded: false };
   libraryUnreadable: Unreadable | null = null;
   unreadableBooks = new Map<UUID, Unreadable>();
+  /** 내가 마지막으로 쓴 내용 (밖에서 바뀐 것과 구별) */
+  private lastWritten = new Map<string, string>();
 
   constructor(private fs: FileAdapter, readonly folder: string) {}
 
@@ -53,6 +55,7 @@ export class BookStore {
 
   private async writeAtomic(path: string, text: string): Promise<void> {
     const tmp = `${path}.tmp`;
+    this.lastWritten.set(path, text);
     await this.fs.write(tmp, text);
     if (await this.fs.exists(path)) await this.fs.remove(path);
     await this.fs.rename(tmp, path);
@@ -119,6 +122,21 @@ export class BookStore {
     if (this.unreadableBooks.has(id.toUpperCase())) return false;
     await this.writeAtomic(this.bookPath(id), stableStringify(encodeData(data)));
     return true;
+  }
+
+  /** 밖에서 바뀐 책 파일이면 읽은 내용, 내가 쓴 그대로이거나 읽지 못하면 null */
+  async readChangedBook(id: UUID): Promise<PlannerData | null> {
+    const path = this.bookPath(id);
+    if (!(await this.fs.exists(path))) return null;
+    const raw = await this.fs.read(path);
+    if (raw === this.lastWritten.get(path)) return null;
+    try {
+      const d = decodeData(JSON.parse(raw));
+      this.lastWritten.set(path, raw);
+      return d;
+    } catch {
+      return null; // 쓰는 도중 읽었을 수 있다 — 다음 변경 때 다시
+    }
   }
 
   /** 새 책. 형광펜 · 기본 컬러는 inherit 에서 이어받는다 */

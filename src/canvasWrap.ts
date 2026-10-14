@@ -1,17 +1,21 @@
-// 화면용 줄 나눔: 캔버스로 손글씨 글꼴 폭을 재서 나눈다 (원본 CoreText 와 비슷하게 — 공백에서 먼저, 안 되면 글자 단위).
-// 원본과 글꼴 엔진이 달라 아주 긴 할 일은 줄 수가 한 줄쯤 다를 수 있다.
+// 화면용 줄 나눔: 캔버스로 글꼴 폭을 재서 나눈다 (원본 CoreText 와 비슷하게 — 공백에서 먼저, 안 되면 글자 단위).
+// 손글씨 글꼴은 쓰지 않고 Obsidian 본문 글꼴로 잰다 (회장님 10-14). 그래서 긴 할 일은 원본과 줄 수가 다를 수 있다.
 
 import { Wrap } from "./model/ruled";
 
-export const HAND_FONT = "PoorStory";
-export const HAND_SCALE = 0.9;
+/** 디자인 글자 크기에 곱해 실제로 그리는 크기 (재는 것과 그리는 것이 같아야 줄이 맞는다) */
+export const TEXT_SCALE = 0.8;
 
-export function canvasWrap(family = `"${HAND_FONT}", "Nanum Pen Script", cursive`): Wrap {
+export function textFamily(): string {
+  return getComputedStyle(document.body).getPropertyValue("--font-text").trim() || "sans-serif";
+}
+
+export function canvasWrap(family = textFamily()): Wrap {
   const ctx = document.createElement("canvas").getContext("2d");
   if (!ctx) throw new Error("canvas 2d 를 쓸 수 없음");
   return (text, fontSize, width) => {
     if (!text) return [""];
-    ctx.font = `${fontSize * HAND_SCALE}px ${family}`;
+    ctx.font = `${fontSize * TEXT_SCALE}px ${family}`;
     const w = Math.max(width, 10);
     const out: string[] = [];
     for (const para of text.split("\n")) {

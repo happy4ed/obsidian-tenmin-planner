@@ -1,0 +1,16 @@
+<!doctype html><meta charset="utf-8"><title>10분 플래너 확인</title>
+<link rel="stylesheet" href="../../styles.css">
+<style>
+  :root { --font-text: "Noto Sans KR", "Apple SD Gothic Neo", sans-serif; --font-ui-small: 13px; --background-secondary: #f4f4f5;
+    --background-primary-alt: #e9e9ec; --background-modifier-border: #ddd; --interactive-accent: #7b6cd9; --text-muted: #777; }
+  body { margin: 0; font-family: sans-serif; } #app { height: 100vh; }
+  #app > div { height: 100%; }
+  .stub-menu { position: fixed; z-index: 99; background: #fff; border: 1px solid #ccc; display: flex; flex-direction: column; padding: 4px; }
+  .stub-menu button { text-align: left; border: none; background: none; padding: 4px 10px; }
+  .stub-modal { position: fixed; z-index: 98; top: 40px; left: 50%; transform: translateX(-50%); width: 420px; background: #fff;
+    border: 1px solid #aaa; padding: 12px; max-height: 80vh; overflow: auto; }
+  .stub-setting { display: flex; gap: 6px; align-items: center; margin: 6px 0; flex-wrap: wrap; }
+  .stub-notice { position: fixed; bottom: 10px; right: 10px; background: #333; color: #fff; padding: 6px 10px; }
+</style>
+<div id="app"></div>
+<script src="out.js"></script>

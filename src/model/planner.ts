@@ -182,6 +182,28 @@ export class Planner {
     this.editDay(d, (r) => { r.tasks = r.tasks.filter((t) => !sameUUID(t.id, id)); });
   }
 
+  // ── COMMENT · MEMO ───────────────────────────────────
+
+  setComment(d: Date, text: string): void { this.editDay(d, (r) => { r.comment = text; }); }
+
+  /** 메모는 3칸이 기본이고, 넘치면 늘어난다 */
+  setMemo(d: Date, i: number, text: string): void {
+    this.editDay(d, (r) => { while (r.memos.length <= i) r.memos.push(""); r.memos[i] = text; });
+  }
+
+  setMemoTag(d: Date, i: number, text: string): void {
+    this.editDay(d, (r) => { while (r.memoTags.length <= i) r.memoTags.push(""); r.memoTags[i] = text; });
+  }
+
+  /** 끝에 붙은 빈 메모는 칸으로만 남긴다: 내용이 있는 마지막 메모까지의 개수 */
+  static memoCount(r: DayRecord): number {
+    let n = 0;
+    for (let i = 0; i < Math.max(r.memos.length, r.memoTags.length); i++) {
+      if ((r.memos[i] ?? "") !== "" || (r.memoTags[i] ?? "") !== "") n = i + 1;
+    }
+    return n;
+  }
+
   // ── 타임테이블 ───────────────────────────────────────
 
   setSlots(d: Date, slots: number[]): void {
