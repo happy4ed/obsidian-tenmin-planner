@@ -5,7 +5,12 @@ import * as Dates from "../model/dates";
 import { completion, dailyAverage, HomeStats, makeHomeStats, marked } from "../model/homeStats";
 import { ddayCount } from "../model/planner";
 
-const hm = (min: number) => { const [h, m] = Dates.formatHM(min); return `${h}H${m}M`; };
+const hm = (min: number) => { const [h, m] = Dates.formatHM(min); return `${h}H ${m}M`; };
+/** "8H36M" 을 숫자와 단위 사이를 띄워 보여 준다 */
+function HM({ min }: { min: number }) {
+  const [h, m] = Dates.formatHM(min);
+  return <span class="tmp-hm"><span class="d">{h}</span><span class="u">H</span><span class="d">{m}</span><span class="u">M</span></span>;
+}
 /** 0 = 06시 줄 → "오전 9시 – 10시" (오전 · 오후가 같으면 뒤는 생략) */
 function hourRange(row: number): string {
   const h = (6 + row) % 24, h2 = (h + 1) % 24;
@@ -74,10 +79,10 @@ function DDayCard({ accent }: { accent: string }) {
 function Summary({ s, accent }: { s: HomeStats; accent: string }) {
   const last = s.weeks[s.weeks.length - 2]?.minutes ?? 0;
   const rate = completion(s);
-  const items: [string, string, string?][] = [
-    ["THIS WEEK", hm(s.weekMinutes), `지난주 ${hm(last)}`],
-    ["THIS MONTH", hm(s.monthMinutes), `${s.month}월`],
-    ["DAILY AVERAGE", hm(dailyAverage(s)), "기록한 날 평균"],
+  const items: [string, preact.ComponentChildren, string?][] = [
+    ["THIS WEEK", <HM min={s.weekMinutes} />, `지난주 ${hm(last)}`],
+    ["THIS MONTH", <HM min={s.monthMinutes} />, `${s.month}월`],
+    ["DAILY AVERAGE", <HM min={dailyAverage(s)} />, "기록한 날 평균"],
     ["RECORDED DAYS", `${s.monthDays} / ${s.daysInMonth}`, "이번 달"],
     ["STREAK", `${s.streak}일`, s.streakIncludesToday || s.todayOff ? "오늘까지" : "어제까지"],
     ["DONE RATE", rate == null ? "—" : `${Math.round(rate * 100)}%`, `표시한 할 일 ${marked(s)}개`],
@@ -142,7 +147,7 @@ function Highlighters({ s }: { s: HomeStats }) {
               <div key={c.id} class={`tmp-hl-row ${c.counts ? "" : "is-faint"}`}>
                 <span class="name">{cat.name}{c.counts ? "" : " *"}</span>
                 <span class="bar"><i style={{ width: `${(c.minutes / max) * 100}%`, background: hex(cat.hex) }} /></span>
-                <span class="v">{hm(c.minutes)}</span>
+                <span class="v"><HM min={c.minutes} /></span>
               </div>
             );
           })}

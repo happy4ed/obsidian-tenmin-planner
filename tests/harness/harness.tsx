@@ -3,6 +3,8 @@ import { BookStore, FileAdapter } from "../../src/storage/bookstore";
 import { Planner } from "../../src/model/planner";
 import { canvasWrap } from "../../src/canvasWrap";
 import { PlannerView } from "../../src/view/PlannerView";
+import { buildPdf } from "../../src/pdf/exportPdf";
+(window as any).__buildPdf = buildPdf;
 
 const files = new Map<string, string>();
 const fs: FileAdapter = {

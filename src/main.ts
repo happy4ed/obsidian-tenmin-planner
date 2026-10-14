@@ -1,4 +1,7 @@
-import { App, Notice, Plugin, PluginSettingTab, Setting, TAbstractFile, normalizePath } from "obsidian";
+import { App, Notice, Plugin, PluginSettingTab, Setting, TAbstractFile, TFile, normalizePath } from "obsidian";
+import { PdfModal } from "./pdf/PdfModal";
+import { ImportModal } from "./storage/ImportModal";
+import { backupFileName, backupText, firstRecordedDay, nameFromBackup, parseBackup, recordSummary } from "./storage/backup";
 import { BookStore, FileAdapter } from "./storage/bookstore";
 import { Planner } from "./model/planner";
 import { Wrap } from "./model/ruled";
@@ -6,6 +9,8 @@ import { canvasWrap } from "./canvasWrap";
 import { defaultZooms, PlannerView, VIEW_TYPE, Zooms } from "./view/PlannerView";
 import { UUID } from "./model/uuid";
 import { BookModal, ConfirmModal } from "./view/modals";
+import { repeatRow, RepeatEditModal } from "./view/repeatModals";
+import { newRule } from "./model/repeat";
 import * as Dates from "./model/dates";
 import { conceptOf } from "./view/theme";
 import { concepts } from "./view/theme";
@@ -41,6 +46,9 @@ export default class TenMinPlanner extends Plugin {
     this.app.workspace.onLayoutReady(() => void this.openStore());
 
     this.addCommand({ id: "open", name: "플래너 열기", callback: () => void this.openView() });
+    this.addCommand({ id: "pdf", name: "PDF로 내보내기…", callback: () => this.openPdfDialog() });
+    this.addCommand({ id: "backup-export", name: "백업 내보내기", callback: () => void this.exportBackup() });
+    this.addCommand({ id: "backup-import", name: "백업 가져오기…", callback: () => this.importBackupDialog() });
     for (const [id, name, cmd] of [["prev", "이전 장", "prev"], ["next", "다음 장", "next"], ["today", "오늘", "today"],
       ["daily", "일간 보기", "daily"], ["weekly", "주간 보기", "weekly"], ["home", "홈 (통계)", "home"]] as const) {
       this.addCommand({
@@ -196,6 +204,62 @@ export default class TenMinPlanner extends Plugin {
     async (f) => { await this.store.updateBook(id, f); this.notify(); after?.(); }).open();
   }
 
+  /** 저장소 폴더 안에 바이너리 파일을 쓰고 (같은 이름이면 덮어쓰기) 그 파일을 돌려준다 */
+  private async writeVaultFile(dir: string, name: string, data: ArrayBuffer | string): Promise<TFile> {
+    const folder = normalizePath(`${this.settings.folder}/${dir}`);
+    if (!this.app.vault.getAbstractFileByPath(folder)) { try { await this.app.vault.createFolder(folder); } catch { /* 이미 있음 */ } }
+    const path = normalizePath(`${folder}/${name}`);
+    const old = this.app.vault.getAbstractFileByPath(path);
+    if (old instanceof TFile) {
+      if (typeof data === "string") await this.app.vault.modify(old, data); else await this.app.vault.modifyBinary(old, data);
+      return old;
+    }
+    return typeof data === "string" ? this.app.vault.create(path, data) : this.app.vault.createBinary(path, data);
+  }
+
+  /** PDF 창: 지금 보는 쪽 종류 · 날로 채운다 */
+  openPdfDialog(): void {
+    const p = this.planner;
+    if (!p) return;
+    const v = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0]?.view as PlannerView | undefined;
+    const now = v?.current ?? { kind: "daily" as const, date: new Date() };
+    new PdfModal(this.app, p, this.wrap, now, async (name, data) => {
+      const f = await this.writeVaultFile("PDF", name, data);
+      new Notice(`10분 플래너: ${f.path} 저장됨`);
+      await this.app.workspace.getLeaf("tab").openFile(f);
+    }).open();
+  }
+
+  /** 백업 내보내기: 펼친 책 한 권을 JSON 하나로 (저장소의 백업 폴더) */
+  async exportBackup(): Promise<void> {
+    const p = this.planner;
+    if (!p?.book) return;
+    await this.flush();
+    const f = await this.writeVaultFile("백업", backupFileName(p.book.name), backupText(p.data));
+    new Notice(`10분 플래너: ${f.path} 저장됨`);
+  }
+
+  /** 백업 가져오기: 새 플래너로 되살려 펼친다 (기존 책은 그대로) */
+  importBackupDialog(after?: () => void): void {
+    new ImportModal(this.app, this.settings.folder, async (fileName, text) => {
+      try {
+        const data = parseBackup(text);
+        const names = this.store.library.books.map((b) => b.name);
+        let name = nameFromBackup(fileName);
+        if (names.includes(name)) name = `${name} (백업)`;
+        const used = new Set(this.store.library.books.map((b) => b.cover));
+        const cover = concepts.find((c) => !used.has(c.id))?.id ?? 0;
+        await this.flush();
+        const book = await this.store.createBookFromData(name, firstRecordedDay(data) ?? new Date(), cover, data);
+        this.useBook(book.id, (await this.store.loadBook(book.id))!);
+        new Notice(`10분 플래너: "${name}" 로 가져왔어요`);
+        after?.();
+      } catch (e) {
+        new Notice(`10분 플래너: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }).open();
+  }
+
   /** 플래너 지우기 (확인 후). 펼친 책이면 다음 책을 펼친다 */
   async deleteBook(id: UUID): Promise<void> {
     const wasActive = this.planner?.book?.id === id;
@@ -296,17 +360,69 @@ class TenMinSettingTab extends PluginSettingTab {
       .onClick(() => { p.addCategory(); this.display(); }));
 
     // ── 컬러 ──
-    new Setting(containerEl).setName("컬러").setHeading().setDesc("TOTAL TIME · 요일 · D-day · 체크 표시 색. 일간 팔레트에서 하루만 바꿀 수도 있어요.");
-    new Setting(containerEl).setName("기본 컬러").setDesc("따로 고르지 않은 모든 날이 따라가요")
-      .addDropdown((d) => {
-        for (const cc of concepts) d.addOption(String(cc.id), cc.name);
-        d.setValue(String(p.data.prefs.defaultTheme)).onChange((v) => p.setDefaultTheme(Number(v)));
-      });
+    new Setting(containerEl).setName("컬러").setHeading()
+      .setDesc(`"${book}" 에만 적용돼요. TOTAL TIME · 요일 · D-day · 체크 표시 색이 함께 바뀌어요. 일간 툴바에서 하루만 바꿀 수도 있어요.`);
+    // 미리보기 카드: 고르면 기본 컬러 (따로 고르지 않은 모든 날이 따라감)
+    const grid = containerEl.createDiv({ cls: "tmp-concept-grid" });
+    const now = new Date();
+    const md = `${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
+    const wd = Dates.weekdayEN[now.getDay()].slice(0, 3);
+    for (const cc of concepts) {
+      const card = grid.createEl("button", { cls: `tmp-concept ${p.data.prefs.defaultTheme === cc.id ? "is-active" : ""}` });
+      const date = card.createDiv({ cls: "tmp-concept-date" });
+      date.createSpan({ text: md });
+      date.createSpan({ text: ` ${wd}` }).style.color = cc.accent;
+      date.style.backgroundImage = `linear-gradient(to top, transparent 6%, ${cc.tint} 6%, ${cc.tint} 38%, transparent 38%)`;
+      const total = card.createDiv({ cls: "tmp-concept-total" });
+      total.style.color = cc.accent;
+      total.innerHTML = '<span class="d">8</span><span class="u">H</span><span class="d">36</span><span class="u">M</span>';
+      card.createDiv({ cls: "tmp-concept-name", text: `${cc.name}${p.data.prefs.defaultTheme === cc.id ? " · 기본" : ""}` });
+      card.onclick = () => { p.setDefaultTheme(cc.id); this.display(); };
+    }
     const n = p.themedDayCount;
     new Setting(containerEl).setName("모두 기본 컬러로").setDesc(`따로 컬러를 고른 날 ${n}일`)
       .addButton((b) => b.setButtonText("되돌리기…").setDisabled(n === 0).onClick(() => {
         new ConfirmModal(this.app, "모두 기본 컬러로", `따로 컬러를 고른 ${n}일을 모두 기본 컬러로 되돌려요.`, "되돌리기",
           () => { p.resetAllThemes(); this.display(); }).open();
       }));
+
+    // ── 반복 할 일 ──
+    new Setting(containerEl).setName("반복 할 일").setHeading()
+      .setDesc(`"${book}" 에만 적용돼요. 일정에서 지우면 그날 하나만 지워지고 반복은 그대로예요.`);
+    if (!p.repeats.length) containerEl.createEl("p", { cls: "setting-item-description", text: "아직 없어요. 할 일을 오른쪽 클릭해서 \"반복으로 만들기\" 로도 만들 수 있어요." });
+    for (const r of p.repeats) repeatRow(containerEl, this.app, p, r, Dates.day(new Date()), () => this.display());
+    new Setting(containerEl).addButton((b) => b.setButtonText("새 반복").onClick(() => {
+      new RepeatEditModal(this.app, p, newRule("", new Date()), null, () => this.display()).open();
+    }));
+
+    // ── PDF · 백업 · 데이터 ──
+    new Setting(containerEl).setName("PDF 로 뽑기").setHeading();
+    new Setting(containerEl).setDesc("일간 (A4 반쪽 · A4 세로) · 주간 · 홈을 PDF 로. 저장소의 PDF 폴더에 저장하고 바로 열어요.")
+      .addButton((b) => b.setButtonText("PDF 로 뽑기…").onClick(() => this.plugin.openPdfDialog()));
+
+    new Setting(containerEl).setName("데이터").setHeading();
+    const sum = recordSummary(p.data);
+    const [sh, sm] = Dates.formatHM(sum.minutes);
+    new Setting(containerEl).setName("저장 위치")
+      .setDesc(`${this.plugin.settings.folder}/library.json · ${this.plugin.settings.folder}/books (한 권당 파일 하나 · ${this.plugin.store.library.books.length}권)`);
+    new Setting(containerEl).setName("기록 요약").setDesc(`"${book}" · 기록한 날 ${sum.days}일 · 적은 할 일 ${sum.tasks}개 · 칠한 시간 ${sh}시간 ${sm}분`);
+    new Setting(containerEl).setName("백업").setDesc(`펼친 플래너 한 권을 JSON 하나로 저장소의 ${this.plugin.settings.folder}/백업 폴더에 저장해요. 가져오면 새 플래너로 되살아나요.`)
+      .addButton((b) => b.setButtonText("백업 내보내기").onClick(() => void this.plugin.exportBackup()))
+      .addButton((b) => b.setButtonText("백업 가져오기…").onClick(() => this.plugin.importBackupDialog(() => this.display())));
+
+    // ── 단축키 · 정보 ──
+    new Setting(containerEl).setName("단축키").setHeading().setDesc("글을 쓰는 중에는 쉬어요. 한글 입력 상태에서도 같은 자리의 키가 돼요.");
+    const keys: [string, string][] = [
+      ["← →", "이전 · 다음 장 (주간 · 홈은 ↑ ↓ · PageUp PageDown 도)"], ["T", "오늘"], ["D · W · H", "일간 · 주간 · 홈"],
+      ["1 – 7", "형광펜 (툴바 순서)"], ["E", "지우개"], ["Esc", "쓰기 마치기"], ["Return", "할 일: 아랫줄로 · 메모: 다음 메모로"],
+      ["↑ ↓ (쓰는 중)", "윗줄 · 아랫줄 할 일로"],
+    ];
+    const ul = containerEl.createEl("ul", { cls: "tmp-keys" });
+    for (const [k, v] of keys) { const li = ul.createEl("li"); li.createEl("kbd", { text: k }); li.createSpan({ text: `  ${v}` }); }
+
+    new Setting(containerEl).setName("정보").setHeading();
+    new Setting(containerEl).setName(`10분 플래너 ${this.plugin.manifest.version}`)
+      .setDesc("MIT 라이선스. 데이터 형식과 편집 규칙은 Spiralday 의 MIT 공개 버전을 참고해 다시 작성했어요 (Spiralday · LeanAgileHungry Inc. 와 관계 없음). 반복 할 일 · PDF 는 이 플러그인에서 만든 기능이에요.")
+      .addButton((b) => b.setButtonText("GitHub").onClick(() => window.open("https://github.com/happy4ed/obsidian-tenmin-planner")));
   }
 }

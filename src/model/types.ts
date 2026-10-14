@@ -3,6 +3,7 @@
 
 import { UUID, URL_NAMESPACE, uuidV5 } from "./uuid";
 import { fromISO, toISO } from "./dates";
+import { decodeRule, encodeRule, RepeatRule } from "./repeat";
 
 export enum Mark { none = 0, done = 1, partial = 2, missed = 3, moved = 4 }
 export const nextMark = (m: Mark): Mark => ((m + 1) % 5) as Mark;
@@ -66,6 +67,8 @@ export interface Prefs {
   ddaysPerDay: boolean;
   /** 첫 장에 적는 말 (비어 있으면 파일에 남기지 않는다) */
   motto: string;
+  /** 반복 할 일 규칙 (이 플러그인에서 더한 키 "repeats" — 원본 앱이 다시 저장하면 빠질 수 있다) */
+  repeats: RepeatRule[];
 }
 
 export interface PlannerData {
@@ -110,7 +113,7 @@ export const emptyDay = (): DayRecord => ({
 export const emptyWeek = (): WeekRecord => ({ goal: "", review: "", stars: 0 });
 
 export const defaultPrefs = (): Prefs => ({
-  categories: defaultCategories(), lastKind: "daily", ddays: [], defaultTheme: 0, ddaysPerDay: true, motto: "",
+  categories: defaultCategories(), lastKind: "daily", ddays: [], defaultTheme: 0, ddaysPerDay: true, motto: "", repeats: [],
 });
 
 export const emptyData = (): PlannerData => ({ days: {}, weeks: {}, prefs: defaultPrefs() });
@@ -213,6 +216,7 @@ export function decodePrefs(v: unknown): Prefs {
     // 키가 없으면 1.0.2 까지의 파일 — 읽은 뒤 migrateDDaysPerDay 로 한 번 옮긴다
     ddaysPerDay: r.ddaysPerDay === true,
     motto: str(r.mottoText),
+    repeats: arr(r.repeats).map(decodeRule).filter((x): x is RepeatRule => x != null),
   };
 }
 
@@ -286,6 +290,7 @@ export function encodePrefs(p: Prefs): Raw {
     lastKind: p.lastKind, ddays: p.ddays.map(encDDay), defaultTheme: p.defaultTheme, ddaysPerDay: p.ddaysPerDay,
   };
   if (p.motto) o.mottoText = p.motto;
+  if (p.repeats.length) o.repeats = p.repeats.map(encodeRule);
   return o;
 }
 

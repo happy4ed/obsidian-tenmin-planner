@@ -22,7 +22,7 @@ export function DailyPage() {
   const concept = conceptOf(p.themeOf(date));
   const L = taskLayout(day.tasks, wrap);
   const memo = memoLayout(c.editing, day, wrap);
-  const form = useMemo(() => <FormPrint taskRows={L.rows} memoRows={memo.L.rows} commentMenu />, [L.rows, memo.L.rows]);
+  const form = useMemo(() => <FormPrint taskRows={L.rows} memoRows={memo.L.rows} commentMenu={!c.printing} />, [L.rows, memo.L.rows, c.printing]);
 
   return (
     <div class="tmp-page" style={{ width: `${F.PAGE_W}px`, height: `${F.PAGE_H}px`, background: Ink.paper }}
@@ -33,13 +33,13 @@ export function DailyPage() {
       {day.dayOff
         ? <div class="tmp-dayoff" style={{ ...F.place(F.commentBox), color: concept.accent }}>DAY OFF</div>
         : <Comment text={day.comment} />}
-      <CommentMenu dayOff={day.dayOff} />
+      {!c.printing && <CommentMenu dayOff={day.dayOff} />}
       <TotalTime minutes={p.minutes(date)} color={concept.accent} />
       <Tasks day={day} accent={concept.accent} />
       <Memos memo={memo} />
       <Timetable date={date} slots={day.slots} notes={day.notes} accent={concept.accent}
         x={F.slotsLeft} y={F.gridTop} cellW={F.cell} rowH={F.hourPitch} />
-      <Corners />
+      {!c.printing && <Corners />}
     </div>
   );
 }
@@ -64,7 +64,7 @@ function DDayField({ accent }: { accent: string }) {
   return (
     <div class="tmp-dday" style={F.place(F.inset(F.ddayBox, 16, 16, 10, 16))} title="이 날의 D-day — 저장한 D-day 를 고르거나 새로 만들어 붙여요 (최대 2개)"
       onClick={() => c.openDDay(c.date)}>
-      {list.length === 0 && <div class="tmp-dday-empty">+ D-day</div>}
+      {list.length === 0 && !c.printing && <div class="tmp-dday-empty">+ D-day</div>}
       {list.map((d) => (
         <div key={d.id} class="tmp-dday-row">
           <span style={{ fontSize: `${(two ? 38 : 48) * TEXT_SCALE}px`, color: Ink.text }}>{d.title || "D-day"}</span>

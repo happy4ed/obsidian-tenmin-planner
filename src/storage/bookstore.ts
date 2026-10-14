@@ -184,6 +184,19 @@ export class BookStore {
     return this.activeBook;
   }
 
+  /** 가져온 기록으로 새 책을 만든다 (기존 책은 그대로). 1.0.2 이전 백업이면 D-day 를 날마다 붙이는 형식으로 옮긴다 */
+  async createBookFromData(name: string, start: Date, cover: number, data: PlannerData): Promise<BookInfo> {
+    const book: BookInfo = { id: newUUID(), name, start: Dates.day(start), end: null, cover, created: new Date(), isSample: false };
+    if (!data.prefs.ddaysPerDay) migrateDDaysPerDay(data, new Date(), book);
+    const sample = this.library.books.findIndex((b) => b.isSample);
+    if (sample >= 0) this.library.books.splice(sample, 0, book);
+    else this.library.books.push(book);
+    this.library.activeID = book.id;
+    await this.saveBook(book.id, data);
+    await this.saveLibrary();
+    return book;
+  }
+
   /** 새 책. 형광펜 · 기본 컬러는 inherit 에서 이어받는다 */
   async createBook(name: string, start: Date, end: Date | null, cover = 0, inherit?: PlannerData["prefs"]): Promise<BookInfo> {
     const s = Dates.day(start);

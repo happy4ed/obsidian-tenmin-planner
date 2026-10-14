@@ -29,6 +29,8 @@ export interface ViewCtx {
   /** 지금 날에서 n 장 */
   step(n: number): void;
   openDDay(d: Date): void;
+  /** PDF 로 그리는 중: 빈 칸 안내 · 메뉴 단추 같은 화면 전용 표시는 숨긴다 */
+  printing?: boolean;
 }
 
 export const Ctx = createContext<ViewCtx | null>(null);

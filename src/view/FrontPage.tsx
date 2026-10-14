@@ -74,7 +74,7 @@ function Motto({ w, h }: { w: number; h: number }) {
   }
   return (
     <div class="tmp-motto-view" style={{ ...style, color: text ? Ink.text : Ink.faint }} onClick={() => c.setEditing("motto")}>
-      {text || "여기에 적고 싶은 말을 적어 보세요"}
+      {text || (c.printing ? "" : "여기에 적고 싶은 말을 적어 보세요")}
     </div>
   );
 }

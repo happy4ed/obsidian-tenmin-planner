@@ -12,6 +12,10 @@ proto.createEl = function (tag: string, o?: { text?: string; cls?: string }) {
 proto.empty = function () { this.innerHTML = ""; };
 proto.setText = function (t: string) { this.textContent = t; };
 proto.addClass = function (c: string) { this.classList.add(c); };
+proto.toggleClass = function (c: string, on: boolean) { this.classList.toggle(c, on); };
+proto.createDiv = function (o?: { text?: string; cls?: string }) { return this.createEl("div", o); };
+proto.createSpan = function (o?: { text?: string; cls?: string }) { return this.createEl("span", o); };
+proto.getText = function () { return this.textContent ?? ""; };
 
 export class Notice {
   constructor(msg: string) {
@@ -76,10 +80,19 @@ class TextC extends Comp {
   setValue(v: string) { this.inputEl.value = v; return this; }
   onChange(f: Fn) { this.inputEl.oninput = () => f(this.inputEl.value); return this; }
 }
+class DropdownC extends Comp {
+  selectEl = document.createElement("select");
+  constructor(p: HTMLElement) { super(p); p.appendChild(this.selectEl); }
+  addOption(v: string, t: string) { const o = document.createElement("option"); o.value = v; o.textContent = t; this.selectEl.appendChild(o); return this; }
+  addOptions(m: Record<string, string>) { for (const [k, v] of Object.entries(m)) this.addOption(k, v); return this; }
+  setValue(v: string) { this.selectEl.value = v; return this; }
+  onChange(f: Fn) { this.selectEl.onchange = () => f(this.selectEl.value); return this; }
+}
 class ToggleC extends Comp {
   inputEl = document.createElement("input");
   constructor(p: HTMLElement) { super(p); this.inputEl.type = "checkbox"; p.appendChild(this.inputEl); }
   setValue(v: boolean) { this.inputEl.checked = v; return this; }
+  setTooltip(t: string) { this.inputEl.title = t; return this; }
   onChange(f: Fn) { this.inputEl.onchange = () => f(this.inputEl.checked); return this; }
 }
 class ButtonC extends Comp {
@@ -87,6 +100,7 @@ class ButtonC extends Comp {
   constructor(p: HTMLElement) { super(p); p.appendChild(this.buttonEl); }
   setButtonText(t: string) { this.buttonEl.textContent = t; return this; }
   setCta() { return this; }
+  setWarning() { return this; }
   setIcon(i: string) { this.buttonEl.textContent = i === "minus-circle" ? "−" : i; return this; }
   setTooltip(t: string) { this.buttonEl.title = t; return this; }
   setDisabled(d: boolean) { this.buttonEl.disabled = d; return this; }
@@ -109,6 +123,8 @@ export class Setting {
   addButton(f: Fn) { f(new ButtonC(this.controlEl)); return this; }
   addExtraButton(f: Fn) { f(new ButtonC(this.controlEl)); return this; }
   addColorPicker(f: Fn) { f(new ColorC(this.controlEl)); return this; }
+  addDropdown(f: Fn) { f(new DropdownC(this.controlEl)); return this; }
+  setHeading() { this.settingEl.classList.add("stub-heading"); return this; }
 }
 
 export class ItemView {
@@ -117,6 +133,7 @@ export class ItemView {
 }
 
 export class Plugin {}
+export class TFile {}
 export class PluginSettingTab {}
 export const normalizePath = (p: string) => p;
 export type App = any;

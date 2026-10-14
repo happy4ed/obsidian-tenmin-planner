@@ -142,3 +142,37 @@ describe("책 관리", () => {
     expect(s.library.books).toHaveLength(1);
   });
 });
+
+import { backupFileName, nameFromBackup, parseBackup, firstRecordedDay, recordSummary, backupText } from "../src/storage/backup";
+import { emptyData, emptyDay } from "../src/model/types";
+
+describe("백업", () => {
+  it("파일 이름 만들기 · 되읽기", () => {
+    const f = backupFileName("업무/개인: 2026", new Date(2026, 9, 14));
+    expect(f).toBe("10분 플래너 백업 - 업무-개인- 2026 2026-10-14.json");
+    expect(nameFromBackup(f)).toBe("업무-개인- 2026");
+    expect(nameFromBackup("Spiralday 백업 - 내 플래너 2026-10-01.json")).toBe("내 플래너");
+  });
+  it("왕복 · 시작일 = 가장 이른 기록 · 요약 · 백업이 아닌 파일 거절", () => {
+    const d = emptyData();
+    d.days["2026-10-03"] = { ...emptyDay(), comment: "x" };
+    d.days["2026-10-05"] = { ...emptyDay(), slots: emptyDay().slots.map((_, i) => (i < 3 ? 0 : -1)) };
+    const back = parseBackup(backupText(d));
+    expect(firstRecordedDay(back)!.getDate()).toBe(3);
+    expect(recordSummary(back)).toEqual({ days: 2, tasks: 0, minutes: 30 });
+    expect(() => parseBackup("[1,2]")).toThrow("백업 파일이 아니라서");
+    expect(() => parseBackup("not json")).toThrow();
+  });
+  it("가져오기는 새 책으로, 기존 책은 그대로", async () => {
+    const root = tmp();
+    const s = new BookStore(nodeFS(root), "Planner");
+    await s.loadLibrary();
+    const a = await s.createBook("가", new Date(2026, 9, 1), null);
+    const d = emptyData(); d.days["2026-09-20"] = { ...emptyDay(), comment: "옛 기록" };
+    const b = await s.createBookFromData("가 (백업)", new Date(2026, 8, 20), 3, d);
+    expect(s.library.books.map((x) => x.name)).toEqual(["가", "가 (백업)"]);
+    expect(s.library.activeID).toBe(b.id);
+    expect((await s.loadBook(b.id))!.days["2026-09-20"].comment).toBe("옛 기록");
+    expect(a.id).not.toBe(b.id);
+  });
+});

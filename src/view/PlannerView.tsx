@@ -10,6 +10,7 @@ import { WeeklyPage, WEEK_H, WEEK_TASK_FONT, WEEK_W } from "./WeeklyPage";
 import { HomePage } from "./HomePage";
 import { Front, FrontPage } from "./FrontPage";
 import { DDayModal, PenModal } from "./modals";
+import { RepeatListModal } from "./repeatModals";
 import * as F from "./form";
 import { hex } from "./theme";
 import * as Dates from "../model/dates";
@@ -66,6 +67,9 @@ export class PlannerView extends ItemView {
     render(null, this.contentEl);
     await this.plugin.flush();
   }
+
+  /** 지금 보는 쪽 종류와 날 (PDF 창이 기간을 채울 때) */
+  current: { kind: PageKind; date: Date } | null = null;
 
   /** 명령 팔레트용: 지금 보는 날을 옮긴다 */
   command: ((cmd: "prev" | "next" | "today" | "daily" | "weekly" | "home") => void) | null = null;
@@ -264,6 +268,16 @@ function Planner({ plugin, view }: { plugin: TenMinPlanner; view: PlannerView })
     if (p.book && !bookContains(p.book, dateRef.current)) go(dateRef.current);
   });
 
+  view.current = { kind, date };
+
+  // 반복 할 일: 펼친 날(주간이면 그 주 7일, 홈이면 오늘)에 아직 안 넣은 것을 넣는다 (넣을 게 없으면 아무것도 바꾸지 않는다)
+  useEffect(() => {
+    if (front || !p.repeats.length) return;
+    const days = kind === "weekly" ? Array.from({ length: 7 }, (_, i) => Dates.addDays(i, Dates.weekStart(date)))
+      : kind === "home" ? [Dates.day(new Date())] : [date];
+    p.applyRepeats(days);
+  });
+
   view.command = (cmd) => {
     if (cmd === "today") goToday();
     else if (cmd === "daily" || cmd === "weekly" || cmd === "home") setKind(cmd);
@@ -355,6 +369,10 @@ function Palette({ part, plugin, kind, setKind, label, date, tool, setTool, step
     m.addSeparator();
     m.addItem((it) => it.setTitle("새 플래너…").setIcon("plus").onClick(() => plugin.newBookDialog()));
     m.addItem((it) => it.setTitle("플래너 관리…").setIcon("settings").onClick(() => plugin.openSettings()));
+    m.addSeparator();
+    m.addItem((it) => it.setTitle("PDF로 내보내기…").setIcon("file-output").onClick(() => plugin.openPdfDialog()));
+    m.addItem((it) => it.setTitle("백업 내보내기").setIcon("download").onClick(() => void plugin.exportBackup()));
+    m.addItem((it) => it.setTitle("백업 가져오기…").setIcon("upload").onClick(() => plugin.importBackupDialog()));
     m.showAtMouseEvent(e);
   };
 
@@ -380,6 +398,7 @@ function Palette({ part, plugin, kind, setKind, label, date, tool, setTool, step
         {kind !== "home" && <button aria-label="다음 장" title="다음 장 (→)" disabled={atEnd} onClick={() => step(1)}>›</button>}
         <button title="오늘 (T)" disabled={isToday} onClick={goToday}>오늘</button>
         <button title={kind === "daily" ? "이 날의 D-day" : "오늘의 D-day"} disabled={!!front} onClick={openDDay}>D-day</button>
+        <button title="반복 할 일 — 매일 · 주마다 · 요일마다 · 달마다 · 연마다" onClick={() => new RepeatListModal(plugin.app, plugin.planner!, Dates.day(new Date())).open()}>↻ 반복</button>
       </div>
       {kind !== "home" && <div class="tmp-zoom">
         <button aria-label="작게" title="작게" onClick={() => setZoom({ mode: zoom.mode, factor: Math.max(MIN_FACTOR, zoom.factor / 1.2) })}>−</button>
