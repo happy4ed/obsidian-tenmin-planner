@@ -1,6 +1,6 @@
 {
   "name": "obsidian-tenmin-planner",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "10분 단위 종이 플래너를 Obsidian 안에서 — 일간 · 주간 · 홈, 형광펜 타임테이블",
   "private": true,
   "type": "module",

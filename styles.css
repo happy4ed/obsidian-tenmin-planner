@@ -11,6 +11,9 @@
   background: var(--background-secondary); scrollbar-width: thin;
 }
 .tmp-palette > * { flex: none; }
+/* 종이 아래 편집 줄 */
+.tmp-toolbar { border-bottom: none; border-top: 1px solid var(--background-modifier-border);
+  padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px)); }
 .tmp-palette button { padding: 4px 10px; font-size: var(--font-ui-small); }
 .tmp-nav { display: flex; align-items: center; gap: 4px; }
 .tmp-nav-date { white-space: nowrap; min-width: 120px; text-align: center; font-variant-numeric: tabular-nums; font-size: var(--font-ui-small); }

@@ -114,8 +114,10 @@ function Planner({ plugin, view }: { plugin: TenMinPlanner; view: PlannerView })
       const vw = vv?.width ?? window.innerWidth, vh = vv?.height ?? window.innerHeight;
       const hr = host.getBoundingClientRect();
       const top = scroller.current?.getBoundingClientRect().top ?? hr.top;
+      // 종이 아래 편집 줄 높이는 뺀다 (종이 칸 자체의 높이로 재면 종이 크기에 따라 늘 수 있어 쓰지 않는다)
+      const tools = (host.querySelector(".tmp-toolbar") as HTMLElement | null)?.offsetHeight ?? 0;
       const w = Math.round(Math.min(hr.width || vw, vw));
-      const h = Math.round(Math.max(0, Math.min(hr.bottom || vh, vh) - top));
+      const h = Math.round(Math.max(0, Math.min(hr.bottom || vh, vh) - tools - top));
       setArea((a) => (a.w === w && a.h === h ? a : { w, h }));
     };
     measure();
@@ -242,12 +244,16 @@ function Planner({ plugin, view }: { plugin: TenMinPlanner; view: PlannerView })
     ? `${Dates.key(ws).slice(5)} – ${Dates.key(Dates.addDays(6, ws)).slice(5)}`
     : `${Dates.key(date)} ${Dates.weekdayEN[date.getDay()].slice(0, 3)}`;
 
+  const bars = {
+    plugin, kind, setKind, label, date, tool, setTool, step, goToday,
+    isToday: kind === "weekly" ? Dates.weekStart(new Date()).getTime() === ws.getTime() : kind === "daily" && Dates.isToday(date),
+    atStart, atEnd, openDDay: () => ctx.openDDay(kind === "daily" ? date : Dates.day(new Date())), zoom, setZoom, scale,
+  };
+
   return (
     <Ctx.Provider value={ctx}>
       <div class="tmp-root" tabIndex={0} onKeyDown={onKey as never}>
-        <Palette plugin={plugin} kind={kind} setKind={setKind} label={label} date={date} tool={tool} setTool={setTool} step={step}
-          goToday={goToday} isToday={kind === "weekly" ? Dates.weekStart(new Date()).getTime() === ws.getTime() : kind === "daily" && Dates.isToday(date)}
-          atStart={atStart} atEnd={atEnd} openDDay={() => ctx.openDDay(kind === "daily" ? date : Dates.day(new Date()))} zoom={zoom} setZoom={setZoom} scale={scale} />
+        <Palette part="top" {...bars} />
         <div class="tmp-scroller" ref={scroller}>
           {kind === "home" ? <HomePage openWeek={openWeek} openDay={openDay} /> : (
             <div class="tmp-sheet" style={{ width: `${pageW * scale}px`, height: `${pageH * scale}px` }}>
@@ -257,12 +263,15 @@ function Planner({ plugin, view }: { plugin: TenMinPlanner; view: PlannerView })
             </div>
           )}
         </div>
+        <Palette part="bottom" {...bars} />
       </div>
     </Ctx.Provider>
   );
 }
 
-function Palette({ plugin, kind, setKind, label, date, tool, setTool, step, goToday, isToday, atStart, atEnd, openDDay, zoom, setZoom, scale }: {
+function Palette({ part, plugin, kind, setKind, label, date, tool, setTool, step, goToday, isToday, atStart, atEnd, openDDay, zoom, setZoom, scale }: {
+  /** top = 보기 · 이동 (종이 위), bottom = 편집 도구 (종이 아래) */
+  part: "top" | "bottom";
   plugin: TenMinPlanner; kind: PageKind; setKind(k: PageKind): void; label: string; date: Date; tool: number; setTool(t: number): void;
   step(n: number): void; goToday(): void; isToday: boolean; atStart: boolean; atEnd: boolean; openDDay(): void;
   zoom: Zoom; setZoom(z: Zoom): void; scale: number;
@@ -286,31 +295,15 @@ function Palette({ plugin, kind, setKind, label, date, tool, setTool, step, goTo
 
   const period = p.book ? `${Dates.key(p.book.start)} – ${p.book.end ? Dates.key(p.book.end) : "계속"}` : "";
 
-  // 두 줄: 위 = 쓰는 도구 (책 · 형광펜 · 지우개 · 글씨 · 밥 · 컬러), 아래 = 보기와 이동 (홈 · 주간 · 일간 · 날짜 · 오늘 · D-day · 크기 · 설정).
+  // 위 (종이 위) = 보기 · 이동: 플래너 · 홈 · 주간 · 일간 · 날짜 · 오늘 · D-day · 크기 · 설정
+  // 아래 (종이 아래) = 편집 도구: 형광펜 · 지우개 · 글씨 · 밥 · 컬러
   // 줄마다 한 줄로 두고 넘치면 옆으로 밀어서 본다 (줄이 늘어나 종이를 밀어내지 않게).
-  return (
-    <>
-      <div class="tmp-palette tmp-toolbar">
+  if (part === "top") {
+    return (
+      <div class="tmp-palette tmp-navbar">
       <button class="tmp-book" title={`${p.book?.name ?? ""} · ${period}`} onClick={bookMenu as never}>
         📓 {p.book?.name ?? "플래너"} ▾
       </button>
-      <div class="tmp-pens">
-        {p.categories.map((c, i) => (
-          <button key={c.id} class={`tmp-pen ${tool === c.id ? "is-active" : ""}`} title={`${c.name} (${i + 1}) — 두 번 눌러 이름 · 색 바꾸기`}
-            onClick={() => setTool(c.id)} onDblClick={() => new PenModal(plugin.app, p, c).open()}>
-            <span class="tmp-swatch" style={{ background: hex(c.hex) }} />{c.name}
-          </button>
-        ))}
-        <button class={`tmp-pen ${tool === ERASER ? "is-active" : ""}`} title="지우개 (E) — 칠한 칸, 글씨, 밥시간을 지운다"
-          onClick={() => setTool(ERASER)}>⌫ 지우개</button>
-        <button class={`tmp-pen ${tool === TEXT_TOOL ? "is-active" : ""}`} title="타임테이블에 글씨 쓰기 — 칸을 누르거나 끌어서 쓰기 시작"
-          onClick={() => setTool(TEXT_TOOL)}>✎ 글씨</button>
-        <button class={`tmp-pen ${tool === MEAL_TOOL ? "is-active" : ""}`} title="밥시간 — 시작 칸부터 끝 칸까지 끌기 (누르기만 하면 1시간)"
-          onClick={() => setTool(MEAL_TOOL)}>🍴 밥</button>
-      </div>
-      <Colors plugin={plugin} kind={kind} date={date} />
-      </div>
-      <div class="tmp-palette tmp-navbar">
       <div class="tmp-kinds">
         {([["home", "홈", "H"], ["weekly", "주간", "W"], ["daily", "일간", "D"]] as const).map(([k, name, key]) => (
           <button key={k} class={kind === k ? "is-active" : ""} title={`${name} (${key})`} onClick={() => setKind(k)}>{name}</button>
@@ -333,7 +326,28 @@ function Palette({ plugin, kind, setKind, label, date, tool, setTool, step, goTo
       </div>}
       <button class="tmp-gear" aria-label="설정" title="설정" onClick={() => plugin.openSettings()}>⚙</button>
       </div>
-    </>
+    );
+  }
+  return (
+    <div class="tmp-palette tmp-toolbar">
+      {kind !== "home" && (
+        <div class="tmp-pens">
+          {p.categories.map((c, i) => (
+            <button key={c.id} class={`tmp-pen ${tool === c.id ? "is-active" : ""}`} title={`${c.name} (${i + 1}) — 두 번 눌러 이름 · 색 바꾸기`}
+              onClick={() => setTool(c.id)} onDblClick={() => new PenModal(plugin.app, p, c).open()}>
+              <span class="tmp-swatch" style={{ background: hex(c.hex) }} />{c.name}
+            </button>
+          ))}
+          <button class={`tmp-pen ${tool === ERASER ? "is-active" : ""}`} title="지우개 (E) — 칠한 칸, 글씨, 밥시간을 지운다"
+            onClick={() => setTool(ERASER)}>⌫ 지우개</button>
+          <button class={`tmp-pen ${tool === TEXT_TOOL ? "is-active" : ""}`} title="타임테이블에 글씨 쓰기 — 칸을 누르거나 끌어서 쓰기 시작"
+            onClick={() => setTool(TEXT_TOOL)}>✎ 글씨</button>
+          <button class={`tmp-pen ${tool === MEAL_TOOL ? "is-active" : ""}`} title="밥시간 — 시작 칸부터 끝 칸까지 끌기 (누르기만 하면 1시간)"
+            onClick={() => setTool(MEAL_TOOL)}>🍴 밥</button>
+        </div>
+      )}
+      <Colors plugin={plugin} kind={kind} date={date} />
+    </div>
   );
 }
 
