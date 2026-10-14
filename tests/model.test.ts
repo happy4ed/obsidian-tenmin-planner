@@ -168,3 +168,46 @@ describe("1.0.2 파일 D-day 옮기기", () => {
     expect(d.prefs.ddaysPerDay).toBe(true);
   });
 });
+
+describe("형광펜 관리 · 컬러", () => {
+  const t = new Date(2026, 9, 14);
+  it("새 형광펜: 이름 n, 색은 이미 쓰는 색과 먼 후보, 12개까지", () => {
+    const p = new Planner(emptyData(), null, wrap);
+    const a = p.addCategory()!, b = p.addCategory()!;
+    expect(p.category(a)!.name).toBe("새 형광펜");
+    expect(p.category(b)!.name).toBe("새 형광펜 2");
+    expect(p.category(a)!.hex).not.toBe(p.category(b)!.hex);
+    while (p.addCategory() != null) { /* 채우기 */ }
+    expect(p.categories).toHaveLength(12);
+  });
+  it("순서 바꾸기", () => {
+    const p = new Planner(emptyData(), null, wrap);
+    p.moveCategory(1, -1);
+    expect(p.categories.slice(0, 2).map((c) => c.id)).toEqual([1, 0]);
+    p.moveCategory(1, -1); // 맨 위에서 더 올리지 않는다
+    expect(p.categories[0].id).toBe(1);
+  });
+  it("지우면 모든 날에서 칸은 빈 칸, 할 일은 분류 없음", () => {
+    const p = new Planner(emptyData(), null, wrap);
+    p.editDay(t, (r) => { r.slots[0] = 2; r.slots[1] = 0; });
+    const id = p.addTask(t, 0, 2);
+    p.setTaskText(t, id, "x");
+    expect(p.categoryUsage(2)).toEqual({ minutes: 10, tasks: 1 });
+    p.removeCategory(2);
+    expect(p.category(2)).toBeUndefined();
+    expect(p.day(t).slots.slice(0, 2)).toEqual([-1, 0]);
+    expect(p.day(t).tasks[0].cat).toBeNull();
+  });
+  it("오늘의 컬러: 기본과 같은 색을 고르면 따로 고른 것을 지운다 · 모두 되돌리기", () => {
+    const p = new Planner(emptyData(), null, wrap);
+    p.pickDayTheme(t, 3);
+    expect(p.themeOf(t)).toBe(3);
+    p.pickDayTheme(t, 0);
+    expect(p.day(t).theme).toBeNull();
+    p.pickDayTheme(t, 5); p.pickDayTheme(Dates.addDays(1, t), 6);
+    expect(p.themedDayCount).toBe(2);
+    p.resetAllThemes();
+    expect(p.themedDayCount).toBe(0);
+    expect(Object.keys(p.data.days)).toHaveLength(0);
+  });
+});

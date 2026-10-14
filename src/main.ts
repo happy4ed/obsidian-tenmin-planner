@@ -5,6 +5,8 @@ import { Wrap } from "./model/ruled";
 import { canvasWrap } from "./canvasWrap";
 import { defaultZooms, PlannerView, VIEW_TYPE, Zooms } from "./view/PlannerView";
 import { UUID } from "./model/uuid";
+import { ConfirmModal } from "./view/modals";
+import { concepts } from "./view/theme";
 
 interface Settings { folder: string; zooms: Zooms; zoomVersion: number; }
 /** 크기 설정 형식이 바뀌면 올린다 (0.2.1: "한 장" 기본값으로 다시 시작) */
@@ -201,6 +203,56 @@ class TenMinSettingTab extends PluginSettingTab {
         await this.plugin.flush();
         await this.plugin.openStore();
         new Notice("10분 플래너: 다시 불러왔습니다");
+        this.display();
+      }));
+
+    const p = this.plugin.planner;
+    if (!p) return;
+    const book = p.book?.name ?? "이 플래너";
+
+    // ── 형광펜 ──
+    new Setting(containerEl).setName("형광펜").setHeading().setDesc(`"${book}" 에만 적용돼요. 순서 = 팔레트 순서 = 숫자 키 1–7.`);
+    p.categories.forEach((c, i) => {
+      const row = new Setting(containerEl).setName(i < 7 ? `${i + 1}` : " ");
+      row.addColorPicker((cp) => cp.setValue(`#${c.hex}`).onChange((v) => p.updateCategory(c.id, (x) => { x.hex = v.replace("#", "").toUpperCase(); })));
+      row.addText((t) => {
+        t.setValue(c.name).onChange((v) => p.updateCategory(c.id, (x) => { x.name = v; }));
+        // 비운 채 나가면 "형광펜 n"
+        t.inputEl.addEventListener("blur", () => {
+          if (t.getValue().trim() === "") { p.updateCategory(c.id, (x) => { x.name = `형광펜 ${i + 1}`; }); this.display(); }
+        });
+      });
+      row.addToggle((t) => t.setTooltip("TOTAL TIME 에 포함").setValue(c.counts).onChange((v) => p.updateCategory(c.id, (x) => { x.counts = v; })));
+      row.addExtraButton((b) => b.setIcon("arrow-up").setTooltip("위로 옮기기").setDisabled(i === 0)
+        .onClick(() => { p.moveCategory(c.id, -1); this.display(); }));
+      row.addExtraButton((b) => b.setIcon("arrow-down").setTooltip("아래로 옮기기").setDisabled(i === p.categories.length - 1)
+        .onClick(() => { p.moveCategory(c.id, 1); this.display(); }));
+      row.addExtraButton((b) => b.setIcon("trash").setTooltip(p.categories.length <= 1 ? "형광펜은 하나는 남겨야 해요" : "지우기…")
+        .setDisabled(p.categories.length <= 1).onClick(() => {
+          const u = p.categoryUsage(c.id);
+          const [h, m] = [Math.floor(u.minutes / 60), u.minutes % 60];
+          new ConfirmModal(this.app, `"${c.name}" 형광펜 지우기`,
+            `이 펜으로 칠한 ${h}시간 ${m}분은 빈 칸이 되고, 이 색으로 분류한 할 일 ${u.tasks}개는 분류 없음이 돼요. 되돌릴 수 없어요.`,
+            "지우기", () => { p.removeCategory(c.id); this.display(); }).open();
+        }));
+    });
+    new Setting(containerEl).addButton((b) => b.setButtonText("형광펜 추가")
+      .setTooltip(p.categories.length >= 12 ? "형광펜은 12개까지 만들 수 있어요" : "")
+      .setDisabled(p.categories.length >= 12)
+      .onClick(() => { p.addCategory(); this.display(); }));
+
+    // ── 컬러 ──
+    new Setting(containerEl).setName("컬러").setHeading().setDesc("TOTAL TIME · 요일 · D-day · 체크 표시 색. 일간 팔레트에서 하루만 바꿀 수도 있어요.");
+    new Setting(containerEl).setName("기본 컬러").setDesc("따로 고르지 않은 모든 날이 따라가요")
+      .addDropdown((d) => {
+        for (const cc of concepts) d.addOption(String(cc.id), cc.name);
+        d.setValue(String(p.data.prefs.defaultTheme)).onChange((v) => p.setDefaultTheme(Number(v)));
+      });
+    const n = p.themedDayCount;
+    new Setting(containerEl).setName("모두 기본 컬러로").setDesc(`따로 컬러를 고른 날 ${n}일`)
+      .addButton((b) => b.setButtonText("되돌리기…").setDisabled(n === 0).onClick(() => {
+        new ConfirmModal(this.app, "모두 기본 컬러로", `따로 컬러를 고른 ${n}일을 모두 기본 컬러로 되돌려요.`, "되돌리기",
+          () => { p.resetAllThemes(); this.display(); }).open();
       }));
   }
 }

@@ -8,8 +8,10 @@ import type { Wrap } from "../model/ruled";
 /** 쓰는 칸 키: "t|<할 일 id>" · "c" (COMMENT) · "m|<n>" (메모 본문) · "mt|<n>" (메모 꼬리표) */
 export type EditKey = string | null;
 
-/** 도구: 형광펜 id, 지우개 = -1 */
+/** 도구: 형광펜 id, 지우개 = -1, 글씨 = -2, 밥시간 = -3 (원본과 같은 번호) */
 export const ERASER = -1;
+export const TEXT_TOOL = -2;
+export const MEAL_TOOL = -3;
 
 export interface ViewCtx {
   app: App;

@@ -122,3 +122,18 @@ export class PenModal extends Modal {
 
   onClose(): void { this.contentEl.empty(); }
 }
+
+/** 확인 창: 되돌릴 수 없는 일 전에 */
+export class ConfirmModal extends Modal {
+  constructor(app: App, private title: string, private body: string, private ok: string, private onOk: () => void) { super(app); }
+
+  onOpen(): void {
+    this.titleEl.setText(this.title);
+    this.contentEl.createEl("p", { text: this.body });
+    new Setting(this.contentEl)
+      .addButton((b) => b.setButtonText("취소").onClick(() => this.close()))
+      .addButton((b) => b.setButtonText(this.ok).setWarning().onClick(() => { this.close(); this.onOk(); }));
+  }
+
+  onClose(): void { this.contentEl.empty(); }
+}

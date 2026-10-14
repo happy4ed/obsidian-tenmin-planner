@@ -8,6 +8,7 @@ import {
 } from "./types";
 import { assignTaskRows, freeTaskRow, hasRecord, insertCarried, insertTask, isEmptyDay, joinCategoryGroup, lastTaskLine, taskRowsReady } from "./day";
 import { Wrap } from "./ruled";
+import { newPenName, suggestPenColor } from "./pens";
 import { carryTaskId, newUUID, sameUUID, UUID } from "./uuid";
 
 const clone = <T>(v: T): T => structuredClone(v);
@@ -327,23 +328,70 @@ export class Planner {
     this.editPrefs((p) => { const c = p.categories.find((x) => x.id === id); if (c) f(c); });
   }
 
-  addCategory(name = "새 형광펜", hex = "B9E4A8"): number | null {
+  /** 새 형광펜: 이름 "새 형광펜 (n)", 색은 이미 쓰는 색과 가장 먼 후보. 12개면 null */
+  addCategory(name?: string, hex?: string): number | null {
     if (this.categories.length >= MAX_CATEGORIES) return null;
     const id = Math.max(-1, ...this.categories.map((c) => c.id)) + 1;
-    this.editPrefs((p) => p.categories.push({ id, name, hex, counts: true }));
+    const n = name ?? newPenName(this.categories.map((c) => c.name));
+    const h = hex ?? suggestPenColor(this.categories.map((c) => c.hex));
+    this.editPrefs((p) => p.categories.push({ id, name: n, hex: h, counts: true }));
     return id;
   }
 
-  /** 지운 형광펜으로 칠한 칸은 빈 칸으로 보이고, 그 색이던 할 일은 색 없음이 된다 */
+  /** 목록에서 한 칸 위(-1) · 아래(+1)로. 목록 순서 = 팔레트 순서 = 숫자 키 = 홈 막대 순서 */
+  moveCategory(id: number, dir: -1 | 1): void {
+    const i = this.categories.findIndex((c) => c.id === id), j = i + dir;
+    if (i < 0 || j < 0 || j >= this.categories.length) return;
+    this.editPrefs((p) => { const [c] = p.categories.splice(i, 1); p.categories.splice(j, 0, c); });
+  }
+
+  /** 지우기 전에 알려 줄 것: 그 펜으로 칠한 시간(분)과 분류한 할 일 수 (모든 날) */
+  categoryUsage(id: number): { minutes: number; tasks: number } {
+    let cells = 0, tasks = 0;
+    for (const r of Object.values(this.data.days)) {
+      cells += r.slots.filter((s) => s === id).length;
+      tasks += r.tasks.filter((t) => t.cat === id).length;
+    }
+    return { minutes: cells * 10, tasks };
+  }
+
+  /** 형광펜을 지운다 (최소 1개는 남긴다). 그 펜으로 칠한 칸은 빈 칸, 그 색 할 일은 분류 없음으로 모든 날에서 정리 */
   removeCategory(id: number): void {
     if (this.categories.length <= 1) return;
-    this.editPrefs((p) => { p.categories = p.categories.filter((c) => c.id !== id); });
+    this.data.prefs.categories = this.data.prefs.categories.filter((c) => c.id !== id);
+    for (const [k, r] of Object.entries(this.data.days)) {
+      if (!r.slots.includes(id) && !r.tasks.some((t) => t.cat === id)) continue;
+      r.slots = r.slots.map((s) => (s === id ? -1 : s));
+      r.tasks = r.tasks.map((t) => (t.cat === id ? { ...t, cat: null } : t));
+      if (isEmptyDay(r)) delete this.data.days[k];
+    }
+    this.onChange();
   }
 
   /** 이 날의 컬러 컨셉 번호 */
   themeOf(d: Date): number { return this.day(d).theme ?? this.data.prefs.defaultTheme; }
 
   setTheme(d: Date, theme: number | null): void { this.editDay(d, (r) => { r.theme = theme; }); }
+
+  /** 오늘의 컬러: 기본 컬러와 같은 색을 고르면 따로 고른 것을 지운다 (기본을 따른다) */
+  pickDayTheme(d: Date, id: number): void {
+    this.setTheme(d, id === this.data.prefs.defaultTheme ? null : id);
+  }
+
+  setDefaultTheme(id: number): void { this.editPrefs((p) => { p.defaultTheme = id; }); }
+
+  /** 따로 컬러를 고른 날 수 */
+  get themedDayCount(): number { return Object.values(this.data.days).filter((r) => r.theme != null).length; }
+
+  /** 모든 날을 기본 컬러로 (비게 된 날은 지운다) */
+  resetAllThemes(): void {
+    for (const [k, r] of Object.entries(this.data.days)) {
+      if (r.theme == null) continue;
+      r.theme = null;
+      if (isEmptyDay(r)) delete this.data.days[k];
+    }
+    this.onChange();
+  }
 
   setDayOff(d: Date, on: boolean): void {
     if (this.day(d).dayOff === on) return;

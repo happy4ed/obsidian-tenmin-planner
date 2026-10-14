@@ -3,7 +3,8 @@ import { ItemView, Menu, WorkspaceLeaf } from "obsidian";
 import { render } from "preact";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import type TenMinPlanner from "../main";
-import { Ctx, EditKey, ERASER, ViewCtx } from "./ctx";
+import { Ctx, EditKey, ERASER, MEAL_TOOL, TEXT_TOOL, ViewCtx } from "./ctx";
+import { concepts } from "./theme";
 import { DailyPage } from "./DailyPage";
 import { WeeklyPage, WEEK_H, WEEK_TASK_FONT, WEEK_W } from "./WeeklyPage";
 import { HomePage } from "./HomePage";
@@ -92,7 +93,9 @@ function Planner({ plugin, view }: { plugin: TenMinPlanner; view: PlannerView })
   // 키를 빠르게 연달아 눌러도 마지막으로 옮긴 날을 기준으로 (렌더를 기다리지 않는다)
   const dateRef = useRef(date);
   const kindRef = useRef(kind);
-  const [tool, setTool] = useState(() => p.categories[0]?.id ?? 0);
+  const [toolState, setTool] = useState(() => p.categories[0]?.id ?? 0);
+  // 고른 펜을 설정에서 지웠으면 첫 펜으로
+  const tool = toolState >= 0 && !p.category(toolState) ? (p.categories[0]?.id ?? 0) : toolState;
   const [editing, setEditingState] = useState<EditKey>(null);
   const editingRef = useRef<EditKey>(null);
   const editDateRef = useRef<Date | null>(null);
@@ -149,6 +152,8 @@ function Planner({ plugin, view }: { plugin: TenMinPlanner; view: PlannerView })
     setEditingState(k);
     // 할 일 쓰기를 마치면 빈 할 일을 지운다 (지금 쓰는 것은 남긴다)
     if (prev?.startsWith("t|")) p.cleanup(prevDate, k?.startsWith("t|") ? k.slice(2) : null);
+    // 글씨 메모를 다 쓰고 나면 빈 메모는 지운다
+    if (prev?.startsWith("n|")) p.cleanupNotes(prevDate);
   };
 
   const go = (d: Date) => {
@@ -240,7 +245,7 @@ function Planner({ plugin, view }: { plugin: TenMinPlanner; view: PlannerView })
   return (
     <Ctx.Provider value={ctx}>
       <div class="tmp-root" tabIndex={0} onKeyDown={onKey as never}>
-        <Palette plugin={plugin} kind={kind} setKind={setKind} label={label} tool={tool} setTool={setTool} step={step}
+        <Palette plugin={plugin} kind={kind} setKind={setKind} label={label} date={date} tool={tool} setTool={setTool} step={step}
           goToday={goToday} isToday={kind === "weekly" ? Dates.weekStart(new Date()).getTime() === ws.getTime() : kind === "daily" && Dates.isToday(date)}
           atStart={atStart} atEnd={atEnd} openDDay={() => ctx.openDDay(kind === "daily" ? date : Dates.day(new Date()))} zoom={zoom} setZoom={setZoom} scale={scale} />
         <div class="tmp-scroller" ref={scroller}>
@@ -257,8 +262,8 @@ function Planner({ plugin, view }: { plugin: TenMinPlanner; view: PlannerView })
   );
 }
 
-function Palette({ plugin, kind, setKind, label, tool, setTool, step, goToday, isToday, atStart, atEnd, openDDay, zoom, setZoom, scale }: {
-  plugin: TenMinPlanner; kind: PageKind; setKind(k: PageKind): void; label: string; tool: number; setTool(t: number): void;
+function Palette({ plugin, kind, setKind, label, date, tool, setTool, step, goToday, isToday, atStart, atEnd, openDDay, zoom, setZoom, scale }: {
+  plugin: TenMinPlanner; kind: PageKind; setKind(k: PageKind): void; label: string; date: Date; tool: number; setTool(t: number): void;
   step(n: number): void; goToday(): void; isToday: boolean; atStart: boolean; atEnd: boolean; openDDay(): void;
   zoom: Zoom; setZoom(z: Zoom): void; scale: number;
 }) {
@@ -307,7 +312,12 @@ function Palette({ plugin, kind, setKind, label, tool, setTool, step, goToday, i
         ))}
         <button class={`tmp-pen ${tool === ERASER ? "is-active" : ""}`} title="지우개 (E) — 칠한 칸, 글씨, 밥시간을 지운다"
           onClick={() => setTool(ERASER)}>⌫ 지우개</button>
+        <button class={`tmp-pen ${tool === TEXT_TOOL ? "is-active" : ""}`} title="타임테이블에 글씨 쓰기 — 칸을 누르거나 끌어서 쓰기 시작"
+          onClick={() => setTool(TEXT_TOOL)}>✎ 글씨</button>
+        <button class={`tmp-pen ${tool === MEAL_TOOL ? "is-active" : ""}`} title="밥시간 — 시작 칸부터 끝 칸까지 끌기 (누르기만 하면 1시간)"
+          onClick={() => setTool(MEAL_TOOL)}>🍴 밥</button>
       </div>
+      <Colors plugin={plugin} kind={kind} date={date} />
       {kind !== "home" && <div class="tmp-zoom">
         <button aria-label="작게" title="작게" onClick={() => setZoom({ mode: zoom.mode, factor: Math.max(MIN_FACTOR, zoom.factor / 1.2) })}>−</button>
         {([["page", "한 장", "종이 한 장이 화면에 통째로"], ["fit", "폭", "종이가 화면 폭에 맞게"], ["text", "글자", "할 일 글씨가 Obsidian 본문 글자 크기와 같게"]] as const).map(([m, name, tip]) => (
@@ -317,6 +327,33 @@ function Palette({ plugin, kind, setKind, label, tool, setTool, step, goToday, i
         <span class="tmp-zoom-pct" title="지금 종이 배율">{Math.round(scale * 100)}%</span>
       </div>}
       <button class="tmp-gear" aria-label="설정" title="설정" onClick={() => plugin.openSettings()}>⚙</button>
+    </div>
+  );
+}
+
+/** 컬러 9개: 일간은 "오늘의 컬러" (그날만), 주간 · 홈은 "기본 컬러". 오른쪽 클릭으로 기본 정하기 · 기본 따르기 */
+function Colors({ plugin, kind, date }: { plugin: TenMinPlanner; kind: PageKind; date: Date }) {
+  const p = plugin.planner!;
+  const daily = kind === "daily";
+  const def = p.data.prefs.defaultTheme;
+  const current = daily ? p.themeOf(date) : def;
+  return (
+    <div class="tmp-colors" title={daily ? "오늘의 컬러 — 이 날만 바꿔요" : "기본 컬러 — 따로 고르지 않은 모든 날"}>
+      <span class="tmp-colors-label">{daily ? "오늘의 컬러" : "기본 컬러"}</span>
+      {concepts.map((cc) => (
+        <button key={cc.id} class={`tmp-color ${current === cc.id ? "is-active" : ""}`} aria-label={cc.name} title={cc.name}
+          style={{ background: cc.accent }}
+          onClick={() => (daily ? p.pickDayTheme(date, cc.id) : p.setDefaultTheme(cc.id))}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            const m = new Menu();
+            m.addItem((it) => it.setTitle("기본 컬러로 정하기").setChecked(def === cc.id).onClick(() => p.setDefaultTheme(cc.id)));
+            if (daily) m.addItem((it) => it.setTitle("이 날은 기본 컬러 따르기").setDisabled(p.day(date).theme == null).onClick(() => p.setTheme(date, null)));
+            m.showAtMouseEvent(e as unknown as MouseEvent);
+          }}>
+          {def === cc.id && <i class="tmp-color-default" />}
+        </button>
+      ))}
     </div>
   );
 }
