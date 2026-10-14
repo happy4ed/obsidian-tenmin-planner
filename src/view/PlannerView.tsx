@@ -446,7 +446,7 @@ function Colors({ plugin, kind, date, disabled }: { plugin: TenMinPlanner; kind:
     <div class={`tmp-colors ${disabled ? "is-disabled" : ""}`} title={daily ? "오늘의 컬러 — 이 날만 바꿔요" : "기본 컬러 — 따로 고르지 않은 모든 날"}>
       <span class="tmp-colors-label">{daily ? "오늘의 컬러" : "기본 컬러"}</span>
       {concepts.map((cc) => (
-        <button key={cc.id} class={`tmp-color ${current === cc.id ? "is-active" : ""}`} aria-label={cc.name} title={cc.name}
+        <button key={cc.id} class={`tmp-color ${current === cc.id ? "is-active" : ""}`} aria-label={cc.name} title={def === cc.id ? `${cc.name} · 기본 컬러 (가운데 흰 점)` : cc.name}
           style={{ background: cc.accent }}
           onClick={() => (daily ? p.pickDayTheme(date, cc.id) : p.setDefaultTheme(cc.id))}
           onContextMenu={(e) => {
