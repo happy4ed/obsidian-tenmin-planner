@@ -122,6 +122,7 @@ function Planner({ plugin, view }: { plugin: TenMinPlanner; view: PlannerView })
   const editingRef = useRef<EditKey>(null);
   const editDateRef = useRef<Date | null>(null);
   const [area, setArea] = useState<Area>({ w: 0, h: 0 });
+  const [statusGap, setStatusGap] = useState(0);
   const scroller = useRef<HTMLDivElement>(null);
   // 크기는 일간 · 주간 따로 기억한다 (주간은 7칸이라 폰에서는 글자 맞춤이 낫다)
   const [zooms, setZooms] = useState(plugin.settings.zooms);
@@ -137,7 +138,19 @@ function Planner({ plugin, view }: { plugin: TenMinPlanner; view: PlannerView })
       const hr = host.getBoundingClientRect();
       const top = scroller.current?.getBoundingClientRect().top ?? hr.top;
       // 종이 아래 편집 줄 높이는 뺀다 (종이 칸 자체의 높이로 재면 종이 크기에 따라 늘 수 있어 쓰지 않는다)
-      const tools = (host.querySelector(".tmp-toolbar") as HTMLElement | null)?.offsetHeight ?? 0;
+      // 데스크톱 Obsidian 오른쪽 아래 상태 표시줄(백링크 · 단어 수)이 탭 위에 떠 있으면 그 높이만큼 아래 줄 밑을 비운다
+      const sb = document.querySelector(".status-bar") as HTMLElement | null;
+      let gap = 0;
+      if (sb && sb.getClientRects().length > 0) { // 고정 위치라 offsetParent 로는 못 본다
+        const r = sb.getBoundingClientRect();
+        const overlapsX = r.left < hr.right && r.right > hr.left;
+        if (overlapsX && r.top < hr.bottom && r.bottom > hr.top) gap = Math.ceil(hr.bottom - r.top);
+      }
+      setStatusGap((g) => (g === gap ? g : gap));
+      const toolbar = host.querySelector(".tmp-toolbar") as HTMLElement | null;
+      // 아래 줄 높이 = 지금 높이 - 지금 여백 + 새 여백 (여백을 바꾸기 전에 재도 맞게)
+      const curGap = toolbar ? parseFloat(toolbar.dataset.gap ?? "0") : 0;
+      const tools = toolbar ? toolbar.offsetHeight - curGap + gap : 0;
       const w = Math.round(Math.min(hr.width || vw, vw));
       const h = Math.round(Math.max(0, Math.min(hr.bottom || vh, vh) - tools - top));
       setArea((a) => (a.w === w && a.h === h ? a : { w, h }));
@@ -147,6 +160,9 @@ function Planner({ plugin, view }: { plugin: TenMinPlanner; view: PlannerView })
     ro.observe(host);
     window.addEventListener("resize", measure);
     window.visualViewport?.addEventListener("resize", measure);
+    // 상태 표시줄은 켜고 끌 수 있다 (크기가 바뀌면 다시 잰다)
+    const sbEl = document.querySelector(".status-bar");
+    if (sbEl) ro.observe(sbEl);
     const raf = requestAnimationFrame(measure);
     return () => {
       ro.disconnect();
@@ -269,7 +285,7 @@ function Planner({ plugin, view }: { plugin: TenMinPlanner; view: PlannerView })
   const bars = {
     plugin, kind, setKind, label, date, tool, setTool, step, goToday,
     isToday: kind === "weekly" ? Dates.weekStart(new Date()).getTime() === ws.getTime() : kind === "daily" && Dates.isToday(date),
-    atStart, atEnd, openDDay: () => ctx.openDDay(kind === "daily" ? date : Dates.day(new Date())), zoom, setZoom, scale,
+    atStart, atEnd, openDDay: () => ctx.openDDay(kind === "daily" ? date : Dates.day(new Date())), zoom, setZoom, scale, statusGap,
   };
 
   return (
@@ -291,12 +307,12 @@ function Planner({ plugin, view }: { plugin: TenMinPlanner; view: PlannerView })
   );
 }
 
-function Palette({ part, plugin, kind, setKind, label, date, tool, setTool, step, goToday, isToday, atStart, atEnd, openDDay, zoom, setZoom, scale }: {
+function Palette({ part, plugin, kind, setKind, label, date, tool, setTool, step, goToday, isToday, atStart, atEnd, openDDay, zoom, setZoom, scale, statusGap }: {
   /** top = 보기 · 이동 (종이 위), bottom = 편집 도구 (종이 아래) */
   part: "top" | "bottom";
   plugin: TenMinPlanner; kind: PageKind; setKind(k: PageKind): void; label: string; date: Date; tool: number; setTool(t: number): void;
   step(n: number): void; goToday(): void; isToday: boolean; atStart: boolean; atEnd: boolean; openDDay(): void;
-  zoom: Zoom; setZoom(z: Zoom): void; scale: number;
+  zoom: Zoom; setZoom(z: Zoom): void; scale: number; statusGap: number;
 }) {
   const p = plugin.planner!;
   const books = plugin.store.library.books;
@@ -351,7 +367,8 @@ function Palette({ part, plugin, kind, setKind, label, date, tool, setTool, step
     );
   }
   return (
-    <div class="tmp-palette tmp-toolbar">
+    <div class="tmp-palette tmp-toolbar" data-gap={statusGap}
+      style={statusGap ? { paddingBottom: `calc(6px + ${statusGap}px + env(safe-area-inset-bottom, 0px))` } : undefined}>
       {kind !== "home" && (
         <div class="tmp-pens">
           {p.categories.map((c, i) => (
