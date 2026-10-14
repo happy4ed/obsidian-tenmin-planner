@@ -29,11 +29,13 @@
 .tmp-colors, .tmp-nav, .tmp-zoom, .tmp-kinds { flex-wrap: wrap; max-width: 100%; }
 .tmp-pen { display: inline-flex; align-items: center; gap: 6px; flex: none; white-space: nowrap; }
 .tmp-palette button { white-space: nowrap; }
-.tmp-pen.is-active { font-weight: 700; box-shadow: inset 0 -3px 0 var(--interactive-accent); }
+/* 고른 버튼은 안을 칠한다 (보기 · 크기 · 형광펜 모두 같게) */
+.tmp-pen.is-active, .tmp-zoom .is-active, .tmp-kinds .is-active {
+  font-weight: 700; color: var(--text-normal); border-radius: var(--radius-m, 6px);
+  background-color: color-mix(in srgb, var(--interactive-accent) 22%, transparent) !important; box-shadow: none !important; }
 .tmp-swatch { width: 14px; height: 14px; border-radius: 4px; display: inline-block; }
 .tmp-zoom { display: flex; gap: 2px; align-items: center; }
 .tmp-zoom-pct { font-size: 11px; color: var(--text-muted); min-width: 34px; text-align: right; font-variant-numeric: tabular-nums; }
-.tmp-zoom .is-active { font-weight: 700; box-shadow: inset 0 -3px 0 var(--interactive-accent); }
 .tmp-gear { margin-left: auto; }
 
 /* 폰: 팔레트를 한 줄로 두고 옆으로 밀어서 본다 (종이 자리를 넓게) */
@@ -108,7 +110,6 @@
 
 /* 보기 전환 */
 .tmp-kinds { display: flex; gap: 2px; }
-.tmp-kinds .is-active { font-weight: 700; box-shadow: inset 0 -3px 0 var(--interactive-accent); }
 
 /* 주간 */
 .tmp-wk-label { font: 600 17px "Avenir Next", "Segoe UI", system-ui, sans-serif; fill: #2B2B2F; letter-spacing: .5px; }
