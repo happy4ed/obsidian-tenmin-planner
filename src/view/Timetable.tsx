@@ -11,8 +11,8 @@ import { ERASER, MEAL_TOOL, TEXT_TOOL, useCtx } from "./ctx";
 import { hex } from "./theme";
 import { repainted } from "../model/day";
 import { SLOT_COUNT, TimeNote } from "../model/types";
-import { newRule, slotTime } from "../model/repeat";
-import { RepeatEditModal } from "./repeatModals";
+import { slotTime } from "../model/repeat";
+import { addQuickRepeatItems } from "./quickRepeat";
 import { TEXT_SCALE } from "../canvasWrap";
 
 const COLS = 6, ROWS = 24;
@@ -141,10 +141,11 @@ export function Timetable({ date, slots, notes, accent, x, y, cellW, rowH, disab
           let from = at, to = b.row * COLS + b.c1;
           while (from > 0 && slots[from - 1] === v) from--;
           while (to < SLOT_COUNT - 1 && slots[to + 1] === v) to++;
-          new Menu().addItem((it) => it.setTitle(`이 시간을 반복으로… (${slotTime(from)}–${slotTime(to, true)})`).onClick(() => {
-            const init = { ...newRule("", date, "", v), paint: { from, to } };
-            new RepeatEditModal(c.app, p, init, null, () => {}).open();
-          })).showAtMouseEvent(e as unknown as MouseEvent);
+          // 이 시간 (09:00–10:30) 을 바로 반복: 매일 · 매주 · 매월 · 매년 · 자세히…
+          const m = new Menu();
+          m.addItem((it) => it.setTitle(`이 시간 ${slotTime(from)}–${slotTime(to, true)} 을 반복으로`).setDisabled(true));
+          addQuickRepeatItems(m, c.app, p, date, { text: "", cat: v, paint: { from, to } });
+          m.showAtMouseEvent(e as unknown as MouseEvent);
         }} style={{
           left: `${b.c0 * cellW + 1}px`, top: `${b.row * rowH + rowH * 0.08}px`,
           width: `${(b.c1 - b.c0 + 1) * cellW - 2}px`, height: `${rowH * 0.84}px`, background: b.color,

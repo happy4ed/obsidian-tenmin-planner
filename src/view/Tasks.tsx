@@ -10,8 +10,8 @@ import { owner, RowLayout, span } from "../model/ruled";
 import { TASK_FONT, taskLayout } from "../model/day";
 import { bookContains } from "../model/planner";
 import * as Dates from "../model/dates";
-import { newRule, occurrenceId, weekdayIndex } from "../model/repeat";
-import { RepeatEditModal } from "./repeatModals";
+import { occurrenceId } from "../model/repeat";
+import { addQuickRepeatItems } from "./quickRepeat";
 import { Planner } from "../model/planner";
 
 /** 반복으로 생긴 할 일인지 */
@@ -135,10 +135,9 @@ export function taskMenu(e: MouseEvent, c: ReturnType<typeof useCtx>, date: Date
   // 책의 마지막 날이면 → 표시만 한다 (다음 날로 넘기지 않는다)
   m.addItem((it) => it.setTitle(p.book && !bookContains(p.book, next) ? "내일로 미루기 (마지막 날 — 표시만)" : "내일로 미루기")
     .onClick(() => { if (c.editing?.startsWith("t|")) c.setEditing(null); p.postpone(date, task.id); }));
-  m.addItem((it) => it.setTitle("반복으로 만들기…").onClick(() => {
-    const init = { ...newRule("", date, task.text, task.cat), weekdays: [weekdayIndex(date)] };
-    new RepeatEditModal(c.app, p, init, null, () => {}, { date, taskId: task.id }).open();
-  }));
+  m.addSeparator();
+  addQuickRepeatItems(m, c.app, p, date, { text: task.text, cat: task.cat }, { date, taskId: task.id });
+  m.addSeparator();
   m.addItem((it) => it.setTitle(isRepeatTask(p, date, task.id) ? "삭제 (이 날만 — 반복은 그대로)" : "삭제").onClick(() => p.deleteTask(date, task.id)));
   m.showAtMouseEvent(e);
 }
