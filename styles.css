@@ -273,4 +273,7 @@
 .tmp-bubble .t { font-weight: 700; word-break: keep-all; overflow-wrap: anywhere; }
 .tmp-bubble .m { color: var(--text-muted, #9A96A0); }
 .tmp-bubble .n { margin-top: 4px; white-space: pre-wrap; word-break: keep-all; overflow-wrap: anywhere; }
+/* 편집 · 삭제는 같은 폭 */
+.tmp-bubble-actions { display: flex; }
+.tmp-bubble-actions button { flex: 1 1 0; min-width: 0; padding: 0; }
 .tmp-event-note { width: 100%; min-width: 220px; }

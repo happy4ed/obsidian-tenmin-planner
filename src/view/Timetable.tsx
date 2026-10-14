@@ -2,7 +2,7 @@
 // 일정 하나 = 시작 · 끝 칸 + 형광펜 + 제목 · 내용 · 장소. 칸 번호 = 행 × 6 + 열 (행 = 한 시간, 06시부터).
 // - 형광펜으로 끌면 새 일정 (이미 있는 일정 위에서도 겹치는 새 일정). 일정을 누르기만 하면 선택.
 // - 겹친 일정은 반투명이라 색이 섞여 보인다. 일정마다 시작선이 있어 연달아 있어도 나뉘어 보인다.
-// - 선택한 일정: 시작 · 끝 핸들로 끌어 조절, 말풍선에 전체 (제목 · 시간 · 장소 · 내용), "편집" 으로 팝업.
+// - 선택한 일정: 시작 · 끝 핸들로 끌어 조절, 말풍선에 전체 (제목 · 시간 · 장소 · 내용), "편집" 으로 팝업, "삭제" 로 지우기.
 // - 지우개: 끈 범위를 일정에서 잘라내고, 겹치는 글씨 메모 · 밥시간도 지운다.
 // - 글씨 · 밥시간 도구는 전과 같다.
 import { Menu } from "obsidian";
@@ -215,15 +215,15 @@ export function Timetable({ date, notes, accent, events, x, y, cellW, rowH, disa
         : <MealNote key={n.id} date={date} note={n} accent={accent} cellW={cellW} rowH={rowH} disabled={disabled} />)}
       {shown && !preview && !c.printing && (
         <Bubble ev={shown} cellW={cellW} rowH={rowH} W={W} H={H} scale={screenScale} selected={shown.id === selected}
-          onEdit={() => openEdit(shown)} />
+          onEdit={() => openEdit(shown)} onDelete={() => { p.removeEvent(date, shown.id); setSelected(null); setHover(null); }} />
       )}
     </div>
   );
 }
 
 /** 말풍선: 제목 · 시간 · 장소 · 내용. 종이 배율과 상관없이 화면에서 읽히는 크기 */
-function Bubble({ ev, cellW, rowH, W, H, scale, selected, onEdit }: {
-  ev: TimeEvent; cellW: number; rowH: number; W: number; H: number; scale: number; selected: boolean; onEdit: () => void;
+function Bubble({ ev, cellW, rowH, W, H, scale, selected, onEdit, onDelete }: {
+  ev: TimeEvent; cellW: number; rowH: number; W: number; H: number; scale: number; selected: boolean; onEdit: () => void; onDelete: () => void;
 }) {
   const c = useCtx();
   const cat = c.planner.category(ev.cat);
@@ -240,7 +240,12 @@ function Bubble({ ev, cellW, rowH, W, H, scale, selected, onEdit }: {
       <div class="m">{slotTime(ev.from)} – {slotTime(ev.to, true)} · {mins >= 60 ? `${Math.floor(mins / 60)}시간${mins % 60 ? ` ${mins % 60}분` : ""}` : `${mins}분`}{cat && ev.title ? ` · ${cat.name}` : ""}</div>
       {ev.place && <div class="m">📍 {ev.place}</div>}
       {ev.note && <div class="n">{ev.note}</div>}
-      {selected && <button style={{ fontSize: `${12 * k}px`, height: `${26 * k}px`, padding: `0 ${10 * k}px`, marginTop: `${6 * k}px` }} onClick={onEdit}>편집</button>}
+      {selected && (
+        <div class="tmp-bubble-actions" style={{ gap: `${6 * k}px`, marginTop: `${8 * k}px` }}>
+          <button style={{ fontSize: `${12 * k}px`, height: `${28 * k}px` }} onClick={onEdit}>편집</button>
+          <button class="mod-warning" style={{ fontSize: `${12 * k}px`, height: `${28 * k}px` }} onClick={onDelete}>삭제</button>
+        </div>
+      )}
     </div>
   );
 }
