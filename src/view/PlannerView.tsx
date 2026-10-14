@@ -18,22 +18,31 @@ import { TEXT_SCALE } from "../canvasWrap";
 
 export const VIEW_TYPE = "tenmin-planner";
 
-/** 종이 배율: 폭 맞춤(종이 한 장이 탭 폭에) 또는 글자 맞춤(할 일 글씨 = 본문 글자 크기), 그 위에 ± 로 곱한다 */
-export interface Zoom { mode: "fit" | "text"; factor: number; }
-export const DEFAULT_ZOOM: Zoom = { mode: "fit", factor: 1 };
+/**
+ * 종이 배율. page = 종이 한 장이 화면에 통째로 (폭 · 높이 둘 다), fit = 폭에 맞게,
+ * text = 할 일 글씨가 본문 글자 크기와 같게. 그 위에 ± 로 곱한다.
+ */
+export interface Zoom { mode: "page" | "fit" | "text"; factor: number; }
+export const DEFAULT_ZOOM: Zoom = { mode: "page", factor: 1 };
 export type Zooms = Record<"daily" | "weekly", Zoom>;
 export const defaultZooms = (): Zooms => ({ daily: { ...DEFAULT_ZOOM }, weekly: { ...DEFAULT_ZOOM } });
 const GUTTER = 24;
+const MIN_FACTOR = 0.25, MAX_FACTOR = 3;
 
-function pageScale(z: Zoom, width: number, pageW: number, taskFont: number): number {
+interface Area { w: number; h: number; }
+
+function pageScale(z: Zoom, area: Area, pageW: number, pageH: number, taskFont: number): number {
+  const byW = area.w > GUTTER ? (area.w - GUTTER) / pageW : 0.3;
   let base: number;
   if (z.mode === "text") {
     const body = parseFloat(getComputedStyle(document.body).getPropertyValue("--font-text-size")) || 16;
     base = body / (taskFont * TEXT_SCALE);
+  } else if (z.mode === "page") {
+    base = Math.min(byW, area.h > GUTTER ? (area.h - GUTTER) / pageH : byW);
   } else {
-    base = width > GUTTER ? (width - GUTTER) / pageW : 0.3;
+    base = byW;
   }
-  return Math.min(3, Math.max(0.1, base * z.factor));
+  return Math.min(3, Math.max(0.05, base * z.factor));
 }
 
 /** 물리 키 → 숫자 (한글 입력 상태에서도 1-7 이 펜) */
@@ -87,20 +96,37 @@ function Planner({ plugin, view }: { plugin: TenMinPlanner; view: PlannerView })
   const [editing, setEditingState] = useState<EditKey>(null);
   const editingRef = useRef<EditKey>(null);
   const editDateRef = useRef<Date | null>(null);
-  const [width, setWidth] = useState(0);
+  const [area, setArea] = useState<Area>({ w: 0, h: 0 });
+  const scroller = useRef<HTMLDivElement>(null);
   // 크기는 일간 · 주간 따로 기억한다 (주간은 7칸이라 폰에서는 글자 맞춤이 낫다)
   const [zooms, setZooms] = useState(plugin.settings.zooms);
 
-  // 배율: 뷰(탭) 자체의 폭에서 잰다. 종이를 담는 칸에서 재면 종이 크기에 따라 칸이 같이 늘어 배율이 굳을 수 있다.
+  // 종이 칸 크기: 탭 폭과 화면(보이는 영역) 폭 중 작은 쪽, 높이는 종이 칸 위끝부터 화면 아래까지.
+  // 종이를 담는 칸 자체에서 재면 종이 크기에 따라 칸이 같이 늘어 배율이 굳을 수 있고,
+  // 폰에서는 탭 상자가 화면보다 넓게 잡힐 수 있어 화면 폭으로 한 번 더 막는다.
   useLayoutEffect(() => {
     const host = view.contentEl;
-    const measure = () => setWidth(host.getBoundingClientRect().width);
+    const measure = () => {
+      const vv = window.visualViewport;
+      const vw = vv?.width ?? window.innerWidth, vh = vv?.height ?? window.innerHeight;
+      const hr = host.getBoundingClientRect();
+      const top = scroller.current?.getBoundingClientRect().top ?? hr.top;
+      const w = Math.round(Math.min(hr.width || vw, vw));
+      const h = Math.round(Math.max(0, Math.min(hr.bottom || vh, vh) - top));
+      setArea((a) => (a.w === w && a.h === h ? a : { w, h }));
+    };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(host);
     window.addEventListener("resize", measure);
+    window.visualViewport?.addEventListener("resize", measure);
     const raf = requestAnimationFrame(measure);
-    return () => { ro.disconnect(); window.removeEventListener("resize", measure); cancelAnimationFrame(raf); };
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", measure);
+      window.visualViewport?.removeEventListener("resize", measure);
+      cancelAnimationFrame(raf);
+    };
   }, []);
 
   const zk: "daily" | "weekly" = kind === "weekly" ? "weekly" : "daily";
@@ -112,7 +138,7 @@ function Planner({ plugin, view }: { plugin: TenMinPlanner; view: PlannerView })
     void plugin.saveSettings();
   };
   const pageW = kind === "weekly" ? WEEK_W : F.PAGE_W, pageH = kind === "weekly" ? WEEK_H : F.PAGE_H;
-  const scale = pageScale(zoom, width, pageW, kind === "weekly" ? WEEK_TASK_FONT : TASK_FONT);
+  const scale = pageScale(zoom, area, pageW, pageH, kind === "weekly" ? WEEK_TASK_FONT : TASK_FONT);
 
   const setEditing = (k: EditKey, onDate?: Date) => {
     const prev = editingRef.current, prevDate = editDateRef.current ?? dateRef.current;
@@ -216,8 +242,8 @@ function Planner({ plugin, view }: { plugin: TenMinPlanner; view: PlannerView })
       <div class="tmp-root" tabIndex={0} onKeyDown={onKey as never}>
         <Palette plugin={plugin} kind={kind} setKind={setKind} label={label} tool={tool} setTool={setTool} step={step}
           goToday={goToday} isToday={kind === "weekly" ? Dates.weekStart(new Date()).getTime() === ws.getTime() : kind === "daily" && Dates.isToday(date)}
-          atStart={atStart} atEnd={atEnd} openDDay={() => ctx.openDDay(kind === "daily" ? date : Dates.day(new Date()))} zoom={zoom} setZoom={setZoom} />
-        <div class="tmp-scroller">
+          atStart={atStart} atEnd={atEnd} openDDay={() => ctx.openDDay(kind === "daily" ? date : Dates.day(new Date()))} zoom={zoom} setZoom={setZoom} scale={scale} />
+        <div class="tmp-scroller" ref={scroller}>
           {kind === "home" ? <HomePage openWeek={openWeek} openDay={openDay} /> : (
             <div class="tmp-sheet" style={{ width: `${pageW * scale}px`, height: `${pageH * scale}px` }}>
               <div class="tmp-scale" style={{ transform: `scale(${scale})`, width: `${pageW}px`, height: `${pageH}px` }}>
@@ -231,10 +257,10 @@ function Planner({ plugin, view }: { plugin: TenMinPlanner; view: PlannerView })
   );
 }
 
-function Palette({ plugin, kind, setKind, label, tool, setTool, step, goToday, isToday, atStart, atEnd, openDDay, zoom, setZoom }: {
+function Palette({ plugin, kind, setKind, label, tool, setTool, step, goToday, isToday, atStart, atEnd, openDDay, zoom, setZoom, scale }: {
   plugin: TenMinPlanner; kind: PageKind; setKind(k: PageKind): void; label: string; tool: number; setTool(t: number): void;
   step(n: number): void; goToday(): void; isToday: boolean; atStart: boolean; atEnd: boolean; openDDay(): void;
-  zoom: Zoom; setZoom(z: Zoom): void;
+  zoom: Zoom; setZoom(z: Zoom): void; scale: number;
 }) {
   const p = plugin.planner!;
   const books = plugin.store.library.books;
@@ -283,12 +309,12 @@ function Palette({ plugin, kind, setKind, label, tool, setTool, step, goToday, i
           onClick={() => setTool(ERASER)}>⌫ 지우개</button>
       </div>
       {kind !== "home" && <div class="tmp-zoom">
-        <button aria-label="작게" title="작게" onClick={() => setZoom({ mode: zoom.mode, factor: Math.max(0.5, zoom.factor / 1.15) })}>−</button>
-        <button class={zoom.mode === "fit" && zoom.factor === 1 ? "is-active" : ""} title="종이 한 장이 폭에 꼭 맞게"
-          onClick={() => setZoom({ mode: "fit", factor: 1 })}>폭</button>
-        <button class={zoom.mode === "text" && zoom.factor === 1 ? "is-active" : ""} title="할 일 글씨가 Obsidian 본문 글자 크기와 같게"
-          onClick={() => setZoom({ mode: "text", factor: 1 })}>글자</button>
-        <button aria-label="크게" title="크게" onClick={() => setZoom({ mode: zoom.mode, factor: Math.min(3, zoom.factor * 1.15) })}>+</button>
+        <button aria-label="작게" title="작게" onClick={() => setZoom({ mode: zoom.mode, factor: Math.max(MIN_FACTOR, zoom.factor / 1.2) })}>−</button>
+        {([["page", "한 장", "종이 한 장이 화면에 통째로"], ["fit", "폭", "종이가 화면 폭에 맞게"], ["text", "글자", "할 일 글씨가 Obsidian 본문 글자 크기와 같게"]] as const).map(([m, name, tip]) => (
+          <button key={m} class={zoom.mode === m ? "is-active" : ""} title={tip} onClick={() => setZoom({ mode: m, factor: 1 })}>{name}</button>
+        ))}
+        <button aria-label="크게" title="크게" onClick={() => setZoom({ mode: zoom.mode, factor: Math.min(MAX_FACTOR, zoom.factor * 1.2) })}>+</button>
+        <span class="tmp-zoom-pct" title="지금 종이 배율">{Math.round(scale * 100)}%</span>
       </div>}
       <button class="tmp-gear" aria-label="설정" title="설정" onClick={() => plugin.openSettings()}>⚙</button>
     </div>

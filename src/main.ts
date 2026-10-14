@@ -3,11 +3,13 @@ import { BookStore, FileAdapter } from "./storage/bookstore";
 import { Planner } from "./model/planner";
 import { Wrap } from "./model/ruled";
 import { canvasWrap } from "./canvasWrap";
-import { defaultZooms, PlannerView, VIEW_TYPE, Zoom, Zooms } from "./view/PlannerView";
+import { defaultZooms, PlannerView, VIEW_TYPE, Zooms } from "./view/PlannerView";
 import { UUID } from "./model/uuid";
 
-interface Settings { folder: string; zooms: Zooms; }
-const DEFAULTS: Settings = { folder: "Planner", zooms: defaultZooms() };
+interface Settings { folder: string; zooms: Zooms; zoomVersion: number; }
+/** 크기 설정 형식이 바뀌면 올린다 (0.2.1: "한 장" 기본값으로 다시 시작) */
+const ZOOM_VERSION = 2;
+const DEFAULTS: Settings = { folder: "Planner", zooms: defaultZooms(), zoomVersion: ZOOM_VERSION };
 const SAVE_DELAY_MS = 600;
 /** 쓰는 칸을 마지막으로 고친 뒤 이 시간 안이면 밖에서 바뀐 파일을 바로 넣지 않는다 (원본 editingGrace) */
 const EDITING_GRACE_MS = 5000;
@@ -26,10 +28,9 @@ export default class TenMinPlanner extends Plugin {
 
   async onload(): Promise<void> {
     const saved = (await this.loadData()) ?? {};
-    // 0.1.1 의 zoom 하나 → 일간 크기로 옮긴다
-    const zooms: Zooms = { ...defaultZooms(), ...(saved.zooms ?? {}) };
-    if (saved.zoom && !saved.zooms) zooms.daily = saved.zoom as Zoom;
-    this.settings = { folder: saved.folder ?? DEFAULTS.folder, zooms };
+    // 예전 크기 설정은 버리고 "한 장" 으로 시작한다 (폰에서 종이가 화면을 넘던 판)
+    const zooms: Zooms = saved.zoomVersion === ZOOM_VERSION ? { ...defaultZooms(), ...(saved.zooms ?? {}) } : defaultZooms();
+    this.settings = { folder: saved.folder ?? DEFAULTS.folder, zooms, zoomVersion: ZOOM_VERSION };
     this.addSettingTab(new TenMinSettingTab(this.app, this));
     this.registerView(VIEW_TYPE, (leaf) => new PlannerView(leaf, this));
     this.addRibbonIcon("calendar-clock", "10분 플래너 열기", () => void this.openView());
