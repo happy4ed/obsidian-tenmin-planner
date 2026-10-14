@@ -147,14 +147,27 @@ function Planner({ plugin, view }: { plugin: TenMinPlanner; view: PlannerView })
       const hr = host.getBoundingClientRect();
       const top = scroller.current?.getBoundingClientRect().top ?? hr.top;
       // 종이 아래 편집 줄 높이는 뺀다 (종이 칸 자체의 높이로 재면 종이 크기에 따라 늘 수 있어 쓰지 않는다)
-      // 데스크톱 Obsidian 오른쪽 아래 상태 표시줄(백링크 · 단어 수)이 탭 위에 떠 있으면 그 높이만큼 아래 줄 밑을 비운다
-      const sb = document.querySelector(".status-bar") as HTMLElement | null;
-      let gap = 0;
-      if (sb && sb.getClientRects().length > 0) { // 고정 위치라 offsetParent 로는 못 본다
-        const r = sb.getBoundingClientRect();
-        const overlapsX = r.left < hr.right && r.right > hr.left;
-        if (overlapsX && r.top < hr.bottom && r.bottom > hr.top) gap = Math.ceil(hr.bottom - r.top);
+      // 탭 아래 끝을 덮는 바가 있으면 그 높이만큼 아래 줄 밑을 비운다:
+      // 데스크톱 오른쪽 아래 상태 표시줄(백링크 · 단어 수), 폰 화면 아래에 떠 있는 내비게이션 바
+      const bars = new Set<Element>(Array.from(document.querySelectorAll(".status-bar, .mobile-navbar, .mobile-toolbar")));
+      // 이름을 모르는 떠 있는 바도: 탭 아래쪽 몇 점을 탭 밖의 것이 덮고 있으면 그것 (바가 화면 끝에서 떠 있을 수 있어 높이를 몇 군데)
+      const yb = Math.min(hr.bottom, vh);
+      for (const fy of [4, 24, 48]) for (const fx of [0.2, 0.5, 0.8]) {
+        for (const el of document.elementsFromPoint(hr.left + hr.width * fx, yb - fy)) {
+          if (host.contains(el) || el.contains(host)) break;
+          bars.add(el);
+        }
       }
+      let gap = 0;
+      for (const el of bars) {
+        if (host.contains(el) || el.getClientRects().length === 0) continue; // 고정 위치라 offsetParent 로는 못 본다
+        const r = el.getBoundingClientRect();
+        // 화면 전체를 덮는 창 (모달 바탕 등) 은 바가 아니다
+        if (r.height <= 0 || r.height > vh * 0.3 || r.top < hr.top + hr.height / 2) continue;
+        if (r.left < hr.right && r.right > hr.left && r.top < hr.bottom && r.bottom > hr.top) gap = Math.max(gap, Math.ceil(hr.bottom - r.top));
+      }
+      // 떠 있는 바와 아래 줄 사이를 조금 띄운다
+      if (gap > 0) gap += 8;
       setStatusGap((g) => (g === gap ? g : gap));
       const toolbar = host.querySelector(".tmp-toolbar") as HTMLElement | null;
       // 아래 줄 높이 = 지금 높이 - 지금 여백 + 새 여백 (여백을 바꾸기 전에 재도 맞게)
@@ -169,9 +182,8 @@ function Planner({ plugin, view }: { plugin: TenMinPlanner; view: PlannerView })
     ro.observe(host);
     window.addEventListener("resize", measure);
     window.visualViewport?.addEventListener("resize", measure);
-    // 상태 표시줄은 켜고 끌 수 있다 (크기가 바뀌면 다시 잰다)
-    const sbEl = document.querySelector(".status-bar");
-    if (sbEl) ro.observe(sbEl);
+    // 상태 표시줄 · 폰 내비게이션 바는 켜고 끄거나 숨을 수 있다 (크기가 바뀌면 다시 잰다)
+    document.querySelectorAll(".status-bar, .mobile-navbar, .mobile-toolbar").forEach((el) => ro.observe(el));
     // 툴바가 여러 줄로 내려가면 종이 칸이 줄어든다
     host.querySelectorAll(".tmp-navbar, .tmp-toolbar").forEach((el) => ro.observe(el));
     const raf = requestAnimationFrame(measure);
