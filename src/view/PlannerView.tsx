@@ -11,8 +11,26 @@ import { hex } from "./theme";
 import * as Dates from "../model/dates";
 import { bookContains } from "../model/planner";
 import { BookInfo } from "../model/types";
+import { TASK_FONT } from "../model/day";
+import { TEXT_SCALE } from "../canvasWrap";
 
 export const VIEW_TYPE = "tenmin-planner";
+
+/** 종이 배율: 폭 맞춤(종이 한 장이 탭 폭에) 또는 글자 맞춤(할 일 글씨 = 본문 글자 크기), 그 위에 ± 로 곱한다 */
+export interface Zoom { mode: "fit" | "text"; factor: number; }
+export const DEFAULT_ZOOM: Zoom = { mode: "fit", factor: 1 };
+const GUTTER = 24;
+
+function pageScale(z: Zoom, width: number): number {
+  let base: number;
+  if (z.mode === "text") {
+    const body = parseFloat(getComputedStyle(document.body).getPropertyValue("--font-text-size")) || 16;
+    base = body / (TASK_FONT * TEXT_SCALE);
+  } else {
+    base = width > GUTTER ? (width - GUTTER) / F.PAGE_W : 0.3;
+  }
+  return Math.min(3, Math.max(0.1, base * z.factor));
+}
 
 /** 물리 키 → 숫자 (한글 입력 상태에서도 1-7 이 펜) */
 const DIGIT_CODES = ["Digit1", "Digit2", "Digit3", "Digit4", "Digit5", "Digit6", "Digit7"];
@@ -61,16 +79,24 @@ function Planner({ plugin, view }: { plugin: TenMinPlanner; view: PlannerView })
   const [tool, setTool] = useState(() => p.categories[0]?.id ?? 0);
   const [editing, setEditingState] = useState<EditKey>(null);
   const editingRef = useRef<EditKey>(null);
-  const scroller = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(0.5);
+  const root = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
+  const [zoom, setZoomState] = useState(plugin.settings.zoom);
 
+  // 배율: 뷰(탭) 자체의 폭에서 잰다. 종이를 담는 칸에서 재면 종이 크기에 따라 칸이 같이 늘어 배율이 굳을 수 있다.
   useLayoutEffect(() => {
-    const el = scroller.current!;
-    const ro = new ResizeObserver(() => setScale(Math.max(0.2, (el.clientWidth - 24) / F.PAGE_W)));
-    ro.observe(el);
-    return () => ro.disconnect();
+    const host = view.contentEl;
+    const measure = () => setWidth(host.getBoundingClientRect().width);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(host);
+    window.addEventListener("resize", measure);
+    const raf = requestAnimationFrame(measure);
+    return () => { ro.disconnect(); window.removeEventListener("resize", measure); cancelAnimationFrame(raf); };
   }, []);
 
+  const setZoom = (z: Zoom) => { setZoomState(z); plugin.settings.zoom = z; void plugin.saveSettings(); };
+  const scale = pageScale(zoom, width);
   const setEditing = (k: EditKey) => {
     const prev = editingRef.current;
     if (prev === k) return;
@@ -123,10 +149,10 @@ function Planner({ plugin, view }: { plugin: TenMinPlanner; view: PlannerView })
 
   return (
     <Ctx.Provider value={ctx}>
-      <div class="tmp-root" tabIndex={0} onKeyDown={onKey as never}>
+      <div class="tmp-root" ref={root} tabIndex={0} onKeyDown={onKey as never}>
         <Palette plugin={plugin} date={date} tool={tool} setTool={setTool} go={go} step={step} atStart={atStart} atEnd={atEnd}
-          openDDay={() => ctx.openDDay(date)} />
-        <div class="tmp-scroller" ref={scroller}>
+          openDDay={() => ctx.openDDay(date)} zoom={zoom} setZoom={setZoom} />
+        <div class="tmp-scroller">
           <div class="tmp-sheet" style={{ width: `${F.PAGE_W * scale}px`, height: `${F.PAGE_H * scale}px` }}>
             <div class="tmp-scale" style={{ transform: `scale(${scale})` }}>
               <DailyPage />
@@ -138,9 +164,9 @@ function Planner({ plugin, view }: { plugin: TenMinPlanner; view: PlannerView })
   );
 }
 
-function Palette({ plugin, date, tool, setTool, go, step, atStart, atEnd, openDDay }: {
+function Palette({ plugin, date, tool, setTool, go, step, atStart, atEnd, openDDay, zoom, setZoom }: {
   plugin: TenMinPlanner; date: Date; tool: number; setTool(t: number): void; go(d: Date): void; step(n: number): void;
-  atStart: boolean; atEnd: boolean; openDDay(): void;
+  atStart: boolean; atEnd: boolean; openDDay(): void; zoom: Zoom; setZoom(z: Zoom): void;
 }) {
   const p = plugin.planner!;
   const books = plugin.store.library.books;
@@ -182,6 +208,14 @@ function Palette({ plugin, date, tool, setTool, go, step, atStart, atEnd, openDD
         ))}
         <button class={`tmp-pen ${tool === ERASER ? "is-active" : ""}`} title="지우개 (E) — 칠한 칸, 글씨, 밥시간을 지운다"
           onClick={() => setTool(ERASER)}>⌫ 지우개</button>
+      </div>
+      <div class="tmp-zoom">
+        <button aria-label="작게" title="작게" onClick={() => setZoom({ mode: zoom.mode, factor: Math.max(0.5, zoom.factor / 1.15) })}>−</button>
+        <button class={zoom.mode === "fit" && zoom.factor === 1 ? "is-active" : ""} title="종이 한 장이 폭에 꼭 맞게"
+          onClick={() => setZoom({ mode: "fit", factor: 1 })}>폭</button>
+        <button class={zoom.mode === "text" && zoom.factor === 1 ? "is-active" : ""} title="할 일 글씨가 Obsidian 본문 글자 크기와 같게"
+          onClick={() => setZoom({ mode: "text", factor: 1 })}>글자</button>
+        <button aria-label="크게" title="크게" onClick={() => setZoom({ mode: zoom.mode, factor: Math.min(3, zoom.factor * 1.15) })}>+</button>
       </div>
       <button class="tmp-gear" aria-label="설정" title="설정" onClick={() => plugin.openSettings()}>⚙</button>
     </div>

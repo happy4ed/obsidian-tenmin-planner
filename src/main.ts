@@ -3,11 +3,11 @@ import { BookStore, FileAdapter } from "./storage/bookstore";
 import { Planner } from "./model/planner";
 import { Wrap } from "./model/ruled";
 import { canvasWrap } from "./canvasWrap";
-import { PlannerView, VIEW_TYPE } from "./view/PlannerView";
+import { DEFAULT_ZOOM, PlannerView, VIEW_TYPE, Zoom } from "./view/PlannerView";
 import { UUID } from "./model/uuid";
 
-interface Settings { folder: string; }
-const DEFAULTS: Settings = { folder: "Planner" };
+interface Settings { folder: string; zoom: Zoom; }
+const DEFAULTS: Settings = { folder: "Planner", zoom: DEFAULT_ZOOM };
 const SAVE_DELAY_MS = 600;
 /** 쓰는 칸을 마지막으로 고친 뒤 이 시간 안이면 밖에서 바뀐 파일을 바로 넣지 않는다 (원본 editingGrace) */
 const EDITING_GRACE_MS = 5000;
@@ -57,6 +57,8 @@ export default class TenMinPlanner extends Plugin {
   async onunload(): Promise<void> {
     await this.flush();
   }
+
+  async saveSettings(): Promise<void> { await this.saveData(this.settings); }
 
   subscribe(fn: () => void): () => void {
     this.listeners.add(fn);

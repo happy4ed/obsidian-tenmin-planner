@@ -20,7 +20,7 @@ const fs: FileAdapter = {
   const book = await store.createBook("내 플래너", new Date(2026, 9, 1), null);
   const listeners = new Set<() => void>();
   const plugin: any = {
-    app: {}, store, loadError: null, wrap: canvasWrap(), files,
+    app: {}, store, loadError: null, wrap: canvasWrap(), files, settings: { zoom: { mode: "fit", factor: 1 } }, saveSettings: async () => {},
     subscribe: (f: () => void) => { listeners.add(f); return () => listeners.delete(f); },
     setEditing: () => {}, flush: async () => { await store.saveBook(plugin.planner.book.id, plugin.planner.data); },
     switchBook: async () => {}, createBook: async () => {}, openSettings: () => {},
