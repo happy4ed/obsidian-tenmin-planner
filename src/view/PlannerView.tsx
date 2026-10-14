@@ -32,6 +32,7 @@ export type Zooms = Record<"daily" | "weekly" | "home", Zoom>;
 export const defaultZooms = (): Zooms => ({ daily: { ...DEFAULT_ZOOM }, weekly: { ...DEFAULT_ZOOM }, home: { mode: "fit", factor: 1 } });
 const GUTTER = 24;
 const MIN_FACTOR = 0.25, MAX_FACTOR = 3;
+const HOME_MIN = 0.5, HOME_MAX = 2.5;
 
 interface Area { w: number; h: number; }
 
@@ -195,6 +196,73 @@ function Planner({ plugin, view }: { plugin: TenMinPlanner; view: PlannerView })
   };
   const pageW = kind === "weekly" ? WEEK_W : F.PAGE_W, pageH = kind === "weekly" ? WEEK_H : F.PAGE_H;
   const scale = pageScale(zoom, area, pageW, pageH, kind === "weekly" ? WEEK_TASK_FONT : TASK_FONT);
+  const pinchState = useRef({ kind, zoom, scale, setZoom });
+  pinchState.current = { kind, zoom, scale, setZoom };
+
+  // 두 손가락 벌리기 · 오므리기: 움직이는 동안은 종이를 그림처럼 늘였다 줄이고 (가볍게),
+  // 손을 떼면 배율을 저장하고 손가락 사이 그 자리가 그대로 손가락 밑에 오게 스크롤을 맞춘다
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    type Pinch = { d0: number; mx0: number; my0: number; ox: number; oy: number; w0: number; lo: number; hi: number; r: number; mx: number; my: number; target: HTMLElement };
+    let pin: Pinch | null = null;
+    const dist = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    const mid = (t: TouchList) => ({ x: (t[0].clientX + t[1].clientX) / 2, y: (t[0].clientY + t[1].clientY) / 2 });
+    const start = (e: TouchEvent) => {
+      if (e.touches.length !== 2) return;
+      const target = el.firstElementChild as HTMLElement | null;
+      const d0 = dist(e.touches);
+      if (!target || d0 < 10) return;
+      const { kind: k, zoom: z, scale: s } = pinchState.current;
+      const m = mid(e.touches), tr = target.getBoundingClientRect();
+      const [lo, hi] = k === "home" ? [HOME_MIN / z.factor, HOME_MAX / z.factor]
+        : [Math.max(MIN_FACTOR / z.factor, 0.05 / s), Math.min(MAX_FACTOR / z.factor, 3 / s)];
+      pin = { d0, mx0: m.x, my0: m.y, ox: m.x - tr.left, oy: m.y - tr.top, w0: tr.width, lo, hi, r: 1, mx: m.x, my: m.y, target };
+      target.style.transformOrigin = `${pin.ox}px ${pin.oy}px`;
+      target.style.willChange = "transform";
+      e.preventDefault();
+    };
+    const move = (e: TouchEvent) => {
+      if (!pin || e.touches.length < 2) return;
+      e.preventDefault();
+      const m = mid(e.touches);
+      pin.r = Math.min(pin.hi, Math.max(pin.lo, dist(e.touches) / pin.d0));
+      pin.mx = m.x; pin.my = m.y;
+      pin.target.style.transform = `translate(${m.x - pin.mx0}px, ${m.y - pin.my0}px) scale(${pin.r})`;
+    };
+    const end = (e: TouchEvent) => {
+      if (!pin || e.touches.length >= 2) return;
+      const q = pin;
+      pin = null;
+      q.target.style.transform = "";
+      q.target.style.transformOrigin = "";
+      q.target.style.willChange = "";
+      if (Math.abs(q.r - 1) < 0.02) return;
+      const { kind: k, setZoom: set } = pinchState.current;
+      set((z) => (k === "home"
+        ? { mode: "fit", factor: Math.round(Math.min(HOME_MAX, Math.max(HOME_MIN, z.factor * q.r)) * 100) / 100 }
+        : { mode: z.mode, factor: Math.min(MAX_FACTOR, Math.max(MIN_FACTOR, z.factor * q.r)) }));
+      // 다시 그린 뒤 (Preact 는 마이크로태스크에서 그린다), 그리기 전에 스크롤을 맞춘다
+      void Promise.resolve().then(() => {
+        const t = el.firstElementChild as HTMLElement | null;
+        if (!t) return;
+        const tr = t.getBoundingClientRect();
+        const ra = tr.width / q.w0;
+        el.scrollLeft += tr.left + q.ox * ra - q.mx;
+        el.scrollTop += tr.top + q.oy * ra - q.my;
+      });
+    };
+    el.addEventListener("touchstart", start, { passive: false });
+    el.addEventListener("touchmove", move, { passive: false });
+    el.addEventListener("touchend", end);
+    el.addEventListener("touchcancel", end);
+    return () => {
+      el.removeEventListener("touchstart", start);
+      el.removeEventListener("touchmove", move);
+      el.removeEventListener("touchend", end);
+      el.removeEventListener("touchcancel", end);
+    };
+  }, []);
 
   const setEditing = (k: EditKey, onDate?: Date) => {
     const prev = editingRef.current, prevDate = editDateRef.current ?? dateRef.current;
@@ -406,9 +474,9 @@ function Palette({ part, plugin, kind, setKind, label, date, tool, setTool, step
       </div>
       {kind === "home" ? (
         <div class="tmp-zoom">
-          <button aria-label="작게" title="작게" onClick={() => setZoom((z) => ({ mode: "fit", factor: Math.round(Math.max(0.5, z.factor / 1.1) * 100) / 100 }))}>−</button>
+          <button aria-label="작게" title="작게" onClick={() => setZoom((z) => ({ mode: "fit", factor: Math.round(Math.max(HOME_MIN, z.factor / 1.1) * 100) / 100 }))}>−</button>
           <button class={zoom.factor === 1 ? "is-active" : ""} title="기본 크기" onClick={() => setZoom({ mode: "fit", factor: 1 })}>기본</button>
-          <button aria-label="크게" title="크게" onClick={() => setZoom((z) => ({ mode: "fit", factor: Math.round(Math.min(2.5, z.factor * 1.1) * 100) / 100 }))}>+</button>
+          <button aria-label="크게" title="크게" onClick={() => setZoom((z) => ({ mode: "fit", factor: Math.round(Math.min(HOME_MAX, z.factor * 1.1) * 100) / 100 }))}>+</button>
           <span class="tmp-zoom-pct" title="지금 홈 배율">{Math.round(zoom.factor * 100)}%</span>
         </div>
       ) : <div class="tmp-zoom">

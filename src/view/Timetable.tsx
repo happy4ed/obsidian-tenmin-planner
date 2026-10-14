@@ -32,7 +32,7 @@ type Drag =
   | { kind: "new"; start: number; cur: number; onEvent: string | null; moved: boolean }
   | { kind: "erase"; start: number; cur: number }
   | { kind: "note"; start: number; cur: number }
-  | { kind: "handle"; id: string; edge: "from" | "to"; other: number };
+  | { kind: "handle"; id: string; edge: "from" | "to"; other: number; from0: number; to0: number };
 
 export function Timetable({ date, notes, accent, events, x, y, cellW, rowH, disabled }: TimetableProps) {
   const c = useCtx();
@@ -80,8 +80,21 @@ export function Timetable({ date, notes, accent, events, x, y, cellW, rowH, disa
     return row * COLS + col;
   };
 
+  // 두 번째 손가락이 닿으면 (핀치 줌) 하던 끌기를 그만둔다. 손잡이로 늘이던 일정은 처음 길이로
+  const abort = () => {
+    const d = drag.current;
+    drag.current = null;
+    setPreview(null);
+    if (d?.kind === "handle") p.updateEvent(date, d.id, (x) => { x.from = d.from0; x.to = d.to0; });
+  };
+  useEffect(() => {
+    const onTouch = (e: TouchEvent) => { if (e.touches.length > 1 && drag.current) abort(); };
+    document.addEventListener("touchstart", onTouch, { capture: true, passive: true });
+    return () => document.removeEventListener("touchstart", onTouch, { capture: true });
+  });
+
   const down = (e: PointerEvent) => {
-    if (e.button !== 0 || disabled) return;
+    if (e.button !== 0 || disabled || !e.isPrimary) return;
     const t = e.target as HTMLElement;
     if (t.closest(".tmp-note-hit, .tmp-note-edit, .tmp-bubble, .tmp-meal-icon")) return;
     e.preventDefault();
@@ -92,7 +105,7 @@ export function Timetable({ date, notes, accent, events, x, y, cellW, rowH, disa
       const ev = events.find((x) => x.id === handle.dataset.id);
       if (!ev) return;
       const edge = handle.dataset.edge as "from" | "to";
-      drag.current = { kind: "handle", id: ev.id, edge, other: edge === "from" ? ev.to : ev.from };
+      drag.current = { kind: "handle", id: ev.id, edge, other: edge === "from" ? ev.to : ev.from, from0: ev.from, to0: ev.to };
       return;
     }
     const start = slotAt(e);
@@ -105,7 +118,7 @@ export function Timetable({ date, notes, accent, events, x, y, cellW, rowH, disa
 
   const move = (e: PointerEvent) => {
     const d = drag.current;
-    if (!d) return;
+    if (!d || !e.isPrimary) return;
     const cur = slotAt(e);
     if (d.kind === "handle") {
       const a = Math.min(cur, d.other), b = Math.max(cur, d.other);
@@ -118,7 +131,8 @@ export function Timetable({ date, notes, accent, events, x, y, cellW, rowH, disa
     setPreview({ a: Math.min(d.start, cur), b: Math.max(d.start, cur), kind: d.kind });
   };
 
-  const up = () => {
+  const up = (e: PointerEvent) => {
+    if (!e.isPrimary) return;
     const d = drag.current;
     drag.current = null;
     setPreview(null);
@@ -165,7 +179,7 @@ export function Timetable({ date, notes, accent, events, x, y, cellW, rowH, disa
 
   return (
     <div ref={el} class={`tmp-timetable ${cls}`} style={F.place({ x, y, w: W, h: H })}
-      onPointerDown={down as never} onPointerMove={move as never} onPointerUp={up} onPointerCancel={cancel}>
+      onPointerDown={down as never} onPointerMove={move as never} onPointerUp={up as never} onPointerCancel={cancel}>
       {events.map((ev) => {
         const cat = p.category(ev.cat);
         const color = cat ? hex(cat.hex) : "#CFCFD4";
