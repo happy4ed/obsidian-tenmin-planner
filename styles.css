@@ -2,7 +2,7 @@
 
 .tmp-view { padding: 0 !important; }
 .tmp-root { display: flex; flex-direction: column; height: 100%; width: 100%; min-width: 0; outline: none; }
-.tmp-empty { padding: 24px; color: var(--text-muted); white-space: pre-wrap; }
+.tmp-empty { padding: 24px; color: var(--text-muted); white-space: pre-wrap; display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
 
 /* 도구 팔레트 */
 .tmp-palette {

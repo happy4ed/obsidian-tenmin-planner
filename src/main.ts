@@ -36,10 +36,7 @@ export default class TenMinPlanner extends Plugin {
     this.addSettingTab(new TenMinSettingTab(this.app, this));
     this.registerView(VIEW_TYPE, (leaf) => new PlannerView(leaf, this));
     this.addRibbonIcon("calendar-clock", "10분 플래너 열기", () => void this.openView());
-    this.app.workspace.onLayoutReady(() => {
-      this.wrap = canvasWrap();
-      void this.openStore();
-    });
+    this.app.workspace.onLayoutReady(() => void this.openStore());
 
     this.addCommand({ id: "open", name: "플래너 열기", callback: () => void this.openView() });
     for (const [id, name, cmd] of [["prev", "이전 장", "prev"], ["next", "다음 장", "next"], ["today", "오늘", "today"],
@@ -106,9 +103,27 @@ export default class TenMinPlanner extends Plugin {
     };
   }
 
-  async openStore(): Promise<void> {
+  private opening: Promise<void> | null = null;
+
+  /** 책장과 펼친 책을 연다. 실패하면 화면에 까닭과 다시 시도를 보여 준다 (예외로 "여는 중" 에 멈추지 않게) */
+  openStore(): Promise<void> {
+    if (this.opening) return this.opening;
+    this.opening = this.openStoreInner()
+      .catch((e: unknown) => {
+        console.error("10분 플래너: 불러오기 실패", e);
+        this.planner = null;
+        this.loadError = `플래너를 불러오지 못했습니다.\n${e instanceof Error ? e.message : String(e)}`;
+        this.notify();
+      })
+      .finally(() => { this.opening = null; });
+    return this.opening;
+  }
+
+  private async openStoreInner(): Promise<void> {
     this.planner = null;
     this.loadError = null;
+    this.notify();
+    if (!this.wrap) this.wrap = canvasWrap();
     this.store = new BookStore(this.fs(), normalizePath(this.settings.folder));
     const lib = await this.store.loadLibrary();
     if (this.store.libraryUnreadable) {

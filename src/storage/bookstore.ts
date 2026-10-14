@@ -40,9 +40,12 @@ export class BookStore {
   bookPath(id: UUID): string { return `${this.folder}/books/${id.toUpperCase()}.json`; }
   get activeBook(): BookInfo | null { return this.library.books.find((b) => sameUUID(b.id, this.library.activeID)) ?? null; }
 
+  /** 폴더를 만든다. 이미 있으면 그대로 (폰에서 exists 가 폴더를 못 알아봐 mkdir 이 "이미 있음" 으로 실패해도 넘어간다) */
   async ensureFolder(): Promise<void> {
-    if (!(await this.fs.exists(this.folder))) await this.fs.mkdir(this.folder);
-    if (!(await this.fs.exists(`${this.folder}/books`))) await this.fs.mkdir(`${this.folder}/books`);
+    for (const dir of [this.folder, `${this.folder}/books`]) {
+      if (await this.fs.exists(dir)) continue;
+      try { await this.fs.mkdir(dir); } catch (e) { if (!(await this.fs.exists(dir))) console.warn("10분 플래너: 폴더 만들기", dir, e); }
+    }
   }
 
   /** 원본이 없고 임시 파일만 남았으면 임시 파일 내용 */
@@ -53,7 +56,17 @@ export class BookStore {
     return null;
   }
 
-  private async writeAtomic(path: string, text: string): Promise<void> {
+  /** 파일마다 쓰기를 줄 세운다 (저장 예약과 책 바꾸기 저장이 겹쳐도 임시 파일을 서로 밟지 않게) */
+  private queue = new Map<string, Promise<void>>();
+
+  private writeAtomic(path: string, text: string): Promise<void> {
+    const prev = this.queue.get(path) ?? Promise.resolve();
+    const next = prev.catch(() => {}).then(() => this.writeNow(path, text));
+    this.queue.set(path, next);
+    return next.finally(() => { if (this.queue.get(path) === next) this.queue.delete(path); });
+  }
+
+  private async writeNow(path: string, text: string): Promise<void> {
     const tmp = `${path}.tmp`;
     this.lastWritten.set(path, text);
     await this.fs.write(tmp, text);

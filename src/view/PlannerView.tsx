@@ -79,9 +79,31 @@ function clamp(d: Date, b: BookInfo | null): Date {
 
 function Root({ plugin, view }: { plugin: TenMinPlanner; view: PlannerView }) {
   const [, setVersion] = useState(0);
-  useEffect(() => plugin.subscribe(() => setVersion((v) => v + 1)), []);
+  const [slow, setSlow] = useState(false);
+  const rendered = plugin.planner;
+  // 구독을 그리기 직후에 걸고, 그 사이 불러오기가 끝났으면 바로 다시 그린다 (알림을 놓치면 "여는 중" 에 멈춘다)
+  useLayoutEffect(() => {
+    const off = plugin.subscribe(() => setVersion((v) => v + 1));
+    if (plugin.planner !== rendered) setVersion((v) => v + 1);
+    return off;
+  }, []);
+  // 오래 걸리면 다시 시도 버튼
+  useEffect(() => {
+    if (plugin.planner) return;
+    const t = window.setTimeout(() => setSlow(true), 6000);
+    return () => window.clearTimeout(t);
+  }, [plugin.planner]);
   const planner = plugin.planner;
-  if (!planner) return <div class="tmp-empty">{plugin.loadError ?? "플래너를 여는 중…"}</div>;
+  if (!planner) {
+    return (
+      <div class="tmp-empty">
+        <div>{plugin.loadError ?? "플래너를 여는 중…"}</div>
+        {(plugin.loadError || slow) && (
+          <button class="mod-cta" onClick={() => { setSlow(false); void plugin.openStore(); }}>다시 시도</button>
+        )}
+      </div>
+    );
+  }
   return <Planner plugin={plugin} view={view} key={planner.book?.id ?? "none"} />;
 }
 

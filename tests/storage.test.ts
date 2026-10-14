@@ -96,3 +96,32 @@ describe("책장 저장", () => {
     expect(readFileSync(join(root, `Planner/books/${id}.json.before-per-day-dday.json`), "utf8")).toBe(old);
   });
 });
+
+describe("저장 안전", () => {
+  it("같은 책을 동시에 여러 번 저장해도 마지막 내용이 남고 임시 파일이 남지 않는다", async () => {
+    const root = tmp();
+    const s = new BookStore(nodeFS(root), "Planner");
+    await s.loadLibrary();
+    const book = await s.createBook("동시", new Date(2026, 9, 1), null);
+    const data = (await s.loadBook(book.id))!;
+    const saves = [1, 2, 3, 4, 5].map((n) => {
+      const d = structuredClone(data);
+      d.weeks["2026-10-12"] = { goal: `목표 ${n}`, review: "", stars: n };
+      return s.saveBook(book.id, d);
+    });
+    await Promise.all(saves);
+    const raw = JSON.parse(readFileSync(join(root, `Planner/books/${book.id}.json`), "utf8"));
+    expect(raw.weeks["2026-10-12"].goal).toBe("목표 5");
+    expect(readdirSync(join(root, "Planner/books")).filter((f) => f.endsWith(".tmp"))).toEqual([]);
+  });
+
+  it("폴더가 있는데 exists 가 못 알아봐도 (mkdir 실패) 불러오기가 멈추지 않는다", async () => {
+    const root = tmp();
+    mkdirSync(join(root, "Planner/books"), { recursive: true });
+    const fs = nodeFS(root);
+    const flaky: FileAdapter = { ...fs, exists: async (p) => (p === "Planner" || p === "Planner/books" ? false : fs.exists(p)),
+      mkdir: async () => { throw new Error("Folder already exists."); } };
+    const s = new BookStore(flaky, "Planner");
+    await expect(s.loadLibrary()).resolves.toBeTruthy();
+  });
+});

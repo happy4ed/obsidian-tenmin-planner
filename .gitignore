@@ -5,3 +5,4 @@ data.json
 .DS_Store
 tests/harness/out.js
 .gstack/
+tests/harness/race.js
