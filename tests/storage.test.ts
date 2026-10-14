@@ -125,3 +125,20 @@ describe("저장 안전", () => {
     await expect(s.loadLibrary()).resolves.toBeTruthy();
   });
 });
+
+describe("책 관리", () => {
+  it("고치기: 종료 < 시작이면 종료 = 시작, 지우기: 펼친 책이면 다음 책, 마지막 한 권은 못 지운다", async () => {
+    const root = tmp();
+    const s = new BookStore(nodeFS(root), "Planner");
+    await s.loadLibrary();
+    const a = await s.createBook("가", new Date(2026, 9, 1), null);
+    const b = await s.createBook("나", new Date(2026, 9, 1), null);
+    const u = (await s.updateBook(b.id, { name: "나2", start: new Date(2026, 9, 10), end: new Date(2026, 9, 5), cover: 3 }))!;
+    expect([u.name, u.cover, u.end!.getDate()]).toEqual(["나2", 3, 10]);
+    expect(s.library.activeID).toBe(b.id);
+    expect((await s.deleteBook(b.id))!.id).toBe(a.id);
+    expect(readdirSync(join(root, "Planner/books"))).toEqual([`${a.id}.json`]);
+    expect(await s.deleteBook(a.id)).toBeNull();
+    expect(s.library.books).toHaveLength(1);
+  });
+});

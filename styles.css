@@ -5,10 +5,11 @@
 .tmp-empty { padding: 24px; color: var(--text-muted); white-space: pre-wrap; display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
 
 /* 도구 팔레트 */
+/* 툴바: 폭이 좁으면 옆으로 밀지 않고 여러 줄로 내려간다 */
 .tmp-palette {
-  display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; overflow-x: auto; overflow-y: hidden;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px;
   padding: 6px 12px; border-bottom: 1px solid var(--background-modifier-border);
-  background: var(--background-secondary); scrollbar-width: thin;
+  background: var(--background-secondary);
 }
 .tmp-palette > * { flex: none; }
 /* 종이 아래 편집 줄 */
@@ -17,7 +18,9 @@
 .tmp-palette button { padding: 4px 10px; font-size: var(--font-ui-small); }
 .tmp-nav { display: flex; align-items: center; gap: 4px; }
 .tmp-nav-date { white-space: nowrap; min-width: 120px; text-align: center; font-variant-numeric: tabular-nums; font-size: var(--font-ui-small); }
-.tmp-pens { display: flex; flex-wrap: nowrap; gap: 4px; }
+/* 묶음을 풀어 버튼 하나하나가 툴바 줄에서 줄바꿈된다 */
+.tmp-pens { display: contents; }
+.tmp-colors, .tmp-nav, .tmp-zoom, .tmp-kinds { flex-wrap: wrap; max-width: 100%; }
 .tmp-pen { display: inline-flex; align-items: center; gap: 6px; flex: none; white-space: nowrap; }
 .tmp-palette button { white-space: nowrap; }
 .tmp-pen.is-active { font-weight: 700; box-shadow: inset 0 -3px 0 var(--interactive-accent); }
@@ -188,3 +191,23 @@
 .tmp-note-preview { position: absolute; border-bottom: 2px dashed; pointer-events: none; }
 .tmp-meal-icon { position: absolute; display: flex; align-items: center; justify-content: center; background: #FCFBF7;
   border: 1.5px solid; border-radius: 50%; cursor: context-menu; }
+
+.tmp-colors.is-disabled { opacity: .4; pointer-events: none; }
+
+/* 표지 · 첫 장 */
+.tmp-front > * { position: absolute; }
+.tmp-cover-rule { display: flex; align-items: center; gap: 18px; font: 700 26px "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  letter-spacing: 6px; color: #2B2B2F; }
+.tmp-cover-rule i { flex: 1; height: 2.7px; background: #2B2B2F; }
+.tmp-cover-name { text-align: center; line-height: 1.25; color: #34333A; word-break: keep-all; overflow-wrap: anywhere; }
+.tmp-cover-period { text-align: center; font-size: 34px; color: #9A96A0; letter-spacing: 1px; white-space: pre; }
+.tmp-cover-tag { display: flex; align-items: center; padding: 0 16px; background: #FCFBF7; border-radius: 6px; color: #34333A; letter-spacing: 2px; }
+.tmp-motto-view { display: flex; align-items: center; justify-content: center; text-align: center; white-space: pre-wrap; cursor: text;
+  line-height: 1.5; overflow: hidden; }
+.tmp-motto { text-align: center; line-height: 1.5; }
+
+/* 설정: 플래너 · 표지 색 */
+.tmp-book-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; vertical-align: middle; }
+.tmp-cover-swatch { width: 24px; height: 24px; min-width: 24px; padding: 0 !important; border-radius: 50% !important; border: none;
+  box-shadow: none !important; margin-left: 6px; cursor: pointer; }
+.tmp-cover-swatch.is-active { outline: 2px solid var(--text-normal); outline-offset: 2px; }

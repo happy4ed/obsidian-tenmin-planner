@@ -8,7 +8,8 @@ import { concepts } from "./theme";
 import { DailyPage } from "./DailyPage";
 import { WeeklyPage, WEEK_H, WEEK_TASK_FONT, WEEK_W } from "./WeeklyPage";
 import { HomePage } from "./HomePage";
-import { DDayModal, NewBookModal, PenModal } from "./modals";
+import { Front, FrontPage } from "./FrontPage";
+import { DDayModal, PenModal } from "./modals";
 import * as F from "./form";
 import { hex } from "./theme";
 import * as Dates from "../model/dates";
@@ -110,6 +111,8 @@ function Root({ plugin, view }: { plugin: TenMinPlanner; view: PlannerView }) {
 function Planner({ plugin, view }: { plugin: TenMinPlanner; view: PlannerView }) {
   const p = plugin.planner!;
   const [kind, setKindState] = useState<PageKind>(() => p.data.prefs.lastKind);
+  const [front, setFrontState] = useState<Front | null>(null);
+  const frontRef = useRef<Front | null>(null);
   const lastPage = useRef<PageKind>(kind === "home" ? "daily" : kind);
   const [date, setDate] = useState(() => clamp(new Date(), p.book));
   // 키를 빠르게 연달아 눌러도 마지막으로 옮긴 날을 기준으로 (렌더를 기다리지 않는다)
@@ -163,6 +166,8 @@ function Planner({ plugin, view }: { plugin: TenMinPlanner; view: PlannerView })
     // 상태 표시줄은 켜고 끌 수 있다 (크기가 바뀌면 다시 잰다)
     const sbEl = document.querySelector(".status-bar");
     if (sbEl) ro.observe(sbEl);
+    // 툴바가 여러 줄로 내려가면 종이 칸이 줄어든다
+    host.querySelectorAll(".tmp-navbar, .tmp-toolbar").forEach((el) => ro.observe(el));
     const raf = requestAnimationFrame(measure);
     return () => {
       ro.disconnect();
@@ -203,18 +208,33 @@ function Planner({ plugin, view }: { plugin: TenMinPlanner; view: PlannerView })
     dateRef.current = next;
     setDate(next);
   };
-  /** 일간은 하루, 주간은 한 주씩. 홈은 넘기지 않는다 */
+  const setFront = (f: Front | null) => { frontRef.current = f; setFrontState(f); };
+
+  /** 일간은 하루, 주간은 한 주씩. 홈은 넘기지 않는다. 첫날(첫 주) 앞에는 첫 장 → 표지 (표지 앞으로는 못 넘김) */
   const step = (n: number) => {
     const k = kindRef.current;
     if (k === "home") return;
+    const b = p.book;
+    const f = frontRef.current;
+    if (f) {
+      setEditing(null);
+      if (n < 0) { if (f === "motto") setFront("cover"); return; }
+      if (f === "cover") { setFront("motto"); return; }
+      setFront(null);
+      if (b) go(b.start);
+      return;
+    }
     if (k === "weekly") {
       const ws = Dates.weekStart(dateRef.current);
       const target = Dates.addDays(7 * n, ws);
-      // 책 기간과 겹치는 주까지만
-      const b = p.book;
-      if (b && (Dates.addDays(6, target) < Dates.day(b.start) || (b.end && target > Dates.day(b.end)))) return;
+      // 책 기간과 겹치는 주까지만. 첫 주에서 ← 면 첫 장
+      if (b && Dates.addDays(6, target) < Dates.day(b.start)) { if (n < 0) { setEditing(null); setFront("motto"); } return; }
+      if (b && b.end && target > Dates.day(b.end)) return;
       go(target);
-    } else go(Dates.addDays(n, dateRef.current));
+    } else {
+      if (b && n < 0 && Dates.key(dateRef.current) === Dates.key(Dates.day(b.start))) { setEditing(null); setFront("motto"); return; }
+      go(Dates.addDays(n, dateRef.current));
+    }
   };
 
   const setKind = (k: PageKind) => {
@@ -227,6 +247,7 @@ function Planner({ plugin, view }: { plugin: TenMinPlanner; view: PlannerView })
       go(Dates.weekStart(now).getTime() === ws.getTime() ? now : ws);
     }
     if (k !== "home") lastPage.current = k;
+    else setFront(null); // 홈에는 앞 장이 없다
     kindRef.current = k;
     setKindState(k);
     if (p.data.prefs.lastKind !== k) p.editPrefs((pr) => { pr.lastKind = k; });
@@ -234,8 +255,14 @@ function Planner({ plugin, view }: { plugin: TenMinPlanner; view: PlannerView })
 
   const goToday = () => {
     if (kindRef.current === "home") setKind(lastPage.current);
+    setFront(null);
     go(new Date());
   };
+
+  // 설정에서 기간을 바꿔 보던 날이 밖으로 나가면 가장 가까운 장으로 (앞 장을 보던 중이면 그대로)
+  useEffect(() => {
+    if (p.book && !bookContains(p.book, dateRef.current)) go(dateRef.current);
+  });
 
   view.command = (cmd) => {
     if (cmd === "today") goToday();
@@ -276,15 +303,16 @@ function Planner({ plugin, view }: { plugin: TenMinPlanner; view: PlannerView })
 
   const ws = Dates.weekStart(date);
   const b = p.book;
-  const atStart = !!b && (kind === "weekly" ? Dates.addDays(-1, ws) < Dates.day(b.start) : !bookContains(b, Dates.addDays(-1, date)));
-  const atEnd = !!b && (kind === "weekly" ? !!b.end && Dates.addDays(7, ws) > Dates.day(b.end) : !bookContains(b, Dates.addDays(1, date)));
-  const label = kind === "weekly"
+  // 앞 장이 있으면 첫날(첫 주)에서도 ← 가 된다. 표지가 맨 앞
+  const atStart = b ? front === "cover" : true;
+  const atEnd = !!b && !front && (kind === "weekly" ? !!b.end && Dates.addDays(7, ws) > Dates.day(b.end) : !bookContains(b, Dates.addDays(1, date)));
+  const label = front ? (front === "cover" ? "표지" : "첫 장") : kind === "weekly"
     ? `${Dates.key(ws).slice(5)} – ${Dates.key(Dates.addDays(6, ws)).slice(5)}`
     : `${Dates.key(date)} ${Dates.weekdayEN[date.getDay()].slice(0, 3)}`;
 
   const bars = {
     plugin, kind, setKind, label, date, tool, setTool, step, goToday,
-    isToday: kind === "weekly" ? Dates.weekStart(new Date()).getTime() === ws.getTime() : kind === "daily" && Dates.isToday(date),
+    isToday: !front && (kind === "weekly" ? Dates.weekStart(new Date()).getTime() === ws.getTime() : kind === "daily" && Dates.isToday(date)), front,
     atStart, atEnd, openDDay: () => ctx.openDDay(kind === "daily" ? date : Dates.day(new Date())), zoom, setZoom, scale, statusGap,
   };
 
@@ -296,7 +324,8 @@ function Planner({ plugin, view }: { plugin: TenMinPlanner; view: PlannerView })
           {kind === "home" ? <HomePage openWeek={openWeek} openDay={openDay} /> : (
             <div class="tmp-sheet" style={{ width: `${pageW * scale}px`, height: `${pageH * scale}px` }}>
               <div class="tmp-scale" style={{ transform: `scale(${scale})`, width: `${pageW}px`, height: `${pageH}px` }}>
-                {kind === "weekly" ? <WeeklyPage start={ws} onOpenDay={openDay} /> : <DailyPage />}
+                {front ? <FrontPage front={front} w={pageW} h={pageH} />
+                  : kind === "weekly" ? <WeeklyPage start={ws} onOpenDay={openDay} /> : <DailyPage />}
               </div>
             </div>
           )}
@@ -307,11 +336,11 @@ function Planner({ plugin, view }: { plugin: TenMinPlanner; view: PlannerView })
   );
 }
 
-function Palette({ part, plugin, kind, setKind, label, date, tool, setTool, step, goToday, isToday, atStart, atEnd, openDDay, zoom, setZoom, scale, statusGap }: {
+function Palette({ part, plugin, kind, setKind, label, date, tool, setTool, step, goToday, isToday, atStart, atEnd, openDDay, zoom, setZoom, scale, statusGap, front }: {
   /** top = 보기 · 이동 (종이 위), bottom = 편집 도구 (종이 아래) */
   part: "top" | "bottom";
   plugin: TenMinPlanner; kind: PageKind; setKind(k: PageKind): void; label: string; date: Date; tool: number; setTool(t: number): void;
-  step(n: number): void; goToday(): void; isToday: boolean; atStart: boolean; atEnd: boolean; openDDay(): void;
+  step(n: number): void; goToday(): void; isToday: boolean; atStart: boolean; atEnd: boolean; openDDay(): void; front: Front | null;
   zoom: Zoom; setZoom(z: Zoom): void; scale: number; statusGap: number;
 }) {
   const p = plugin.planner!;
@@ -324,10 +353,8 @@ function Palette({ part, plugin, kind, setKind, label, date, tool, setTool, step
       m.addItem((it) => it.setTitle(name).setChecked(b.id === p.book?.id).onClick(() => void plugin.switchBook(b.id)));
     }
     m.addSeparator();
-    m.addItem((it) => it.setTitle("새 플래너…").setIcon("plus").onClick(() => {
-      const n = books.filter((b) => !b.isSample).length;
-      new NewBookModal(plugin.app, n ? `내 플래너 ${n + 1}` : "내 플래너", (name, s, en) => void plugin.createBook(name, s, en)).open();
-    }));
+    m.addItem((it) => it.setTitle("새 플래너…").setIcon("plus").onClick(() => plugin.newBookDialog()));
+    m.addItem((it) => it.setTitle("플래너 관리…").setIcon("settings").onClick(() => plugin.openSettings()));
     m.showAtMouseEvent(e);
   };
 
@@ -352,7 +379,7 @@ function Palette({ part, plugin, kind, setKind, label, date, tool, setTool, step
         {kind !== "home" && <span class="tmp-nav-date">{label}</span>}
         {kind !== "home" && <button aria-label="다음 장" title="다음 장 (→)" disabled={atEnd} onClick={() => step(1)}>›</button>}
         <button title="오늘 (T)" disabled={isToday} onClick={goToday}>오늘</button>
-        <button title={kind === "daily" ? "이 날의 D-day" : "오늘의 D-day"} onClick={openDDay}>D-day</button>
+        <button title={kind === "daily" ? "이 날의 D-day" : "오늘의 D-day"} disabled={!!front} onClick={openDDay}>D-day</button>
       </div>
       {kind !== "home" && <div class="tmp-zoom">
         <button aria-label="작게" title="작게" onClick={() => setZoom({ mode: zoom.mode, factor: Math.max(MIN_FACTOR, zoom.factor / 1.2) })}>−</button>
@@ -385,19 +412,19 @@ function Palette({ part, plugin, kind, setKind, label, date, tool, setTool, step
             onClick={() => setTool(MEAL_TOOL)}>🍴 밥</button>
         </div>
       )}
-      <Colors plugin={plugin} kind={kind} date={date} />
+      <Colors plugin={plugin} kind={kind} date={date} disabled={!!front} />
     </div>
   );
 }
 
 /** 컬러 9개: 일간은 "오늘의 컬러" (그날만), 주간 · 홈은 "기본 컬러". 오른쪽 클릭으로 기본 정하기 · 기본 따르기 */
-function Colors({ plugin, kind, date }: { plugin: TenMinPlanner; kind: PageKind; date: Date }) {
+function Colors({ plugin, kind, date, disabled }: { plugin: TenMinPlanner; kind: PageKind; date: Date; disabled?: boolean }) {
   const p = plugin.planner!;
   const daily = kind === "daily";
   const def = p.data.prefs.defaultTheme;
   const current = daily ? p.themeOf(date) : def;
   return (
-    <div class="tmp-colors" title={daily ? "오늘의 컬러 — 이 날만 바꿔요" : "기본 컬러 — 따로 고르지 않은 모든 날"}>
+    <div class={`tmp-colors ${disabled ? "is-disabled" : ""}`} title={daily ? "오늘의 컬러 — 이 날만 바꿔요" : "기본 컬러 — 따로 고르지 않은 모든 날"}>
       <span class="tmp-colors-label">{daily ? "오늘의 컬러" : "기본 컬러"}</span>
       {concepts.map((cc) => (
         <button key={cc.id} class={`tmp-color ${current === cc.id ? "is-active" : ""}`} aria-label={cc.name} title={cc.name}

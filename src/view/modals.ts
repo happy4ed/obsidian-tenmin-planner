@@ -3,6 +3,7 @@ import { App, Modal, Notice, Setting } from "obsidian";
 import * as Dates from "../model/dates";
 import { ddayCount, Planner } from "../model/planner";
 import { Category, MAX_DDAYS } from "../model/types";
+import { concepts } from "./theme";
 
 const dateInput = (d: Date) => Dates.key(d);
 const fromInput = (v: string): Date | null => Dates.parseKey(v);
@@ -76,30 +77,52 @@ export class DDayModal extends Modal {
   onClose(): void { this.contentEl.empty(); }
 }
 
-/** 새 플래너: 이름 · 시작일(필수) · 종료일(선택) */
-export class NewBookModal extends Modal {
-  constructor(app: App, private suggested: string, private onDone: (name: string, start: Date, end: Date | null) => void) { super(app); }
+export interface BookForm { name: string; start: Date; end: Date | null; cover: number; }
+
+/** 플래너 만들기 · 고치기: 이름 · 표지 색 · 시작일(필수) · 종료일(선택, 빠르게 정하기) */
+export class BookModal extends Modal {
+  constructor(app: App, private init: BookForm & { title: string; ok: string; warn?: (f: BookForm) => string | null },
+    private onDone: (f: BookForm) => void) { super(app); }
 
   onOpen(): void {
     const el = this.contentEl;
-    this.titleEl.setText("새 플래너");
-    let name = "", start = Dates.day(new Date()), end: Date | null = null;
-    new Setting(el).setName("이름").addText((t) => { t.setPlaceholder(this.suggested).onChange((v) => { name = v.slice(0, 30); }); t.inputEl.maxLength = 30; });
-    new Setting(el).setName("시작일").setDesc("이 날 이전으로는 넘어가지 않아요")
-      .addText((t) => { t.inputEl.type = "date"; t.setValue(Dates.key(start)).onChange((v) => { start = Dates.parseKey(v) ?? start; }); });
-    const endSetting = new Setting(el).setName("종료일").setDesc("비워 두면 계속 넘어가요")
-      .addText((t) => { t.inputEl.type = "date"; t.onChange((v) => { end = v ? Dates.parseKey(v) : null; }); });
-    for (const [label, months] of [["3개월", 3], ["6개월", 6], ["1년", 12]] as const) {
-      endSetting.addButton((b) => b.setButtonText(label).onClick(() => {
-        const e = new Date(start.getFullYear(), start.getMonth() + months, start.getDate() - 1);
-        end = e;
-        (endSetting.controlEl.querySelector("input") as HTMLInputElement).value = Dates.key(e);
-      }));
+    this.titleEl.setText(this.init.title);
+    const f: BookForm = { name: this.init.name, start: Dates.day(this.init.start), end: this.init.end ? Dates.day(this.init.end) : null, cover: this.init.cover };
+    new Setting(el).setName("이름").addText((t) => { t.setPlaceholder("새 플래너").setValue(f.name).onChange((v) => { f.name = v.slice(0, 30); }); t.inputEl.maxLength = 30; });
+    const coverRow = new Setting(el).setName("표지 색");
+    const swatches: HTMLButtonElement[] = [];
+    for (const cc of concepts) {
+      const b = coverRow.controlEl.createEl("button", { cls: "tmp-cover-swatch" });
+      b.style.background = cc.accent;
+      b.title = cc.name;
+      b.onclick = () => { f.cover = cc.id; swatches.forEach((x, i) => x.toggleClass("is-active", i === cc.id)); };
+      swatches.push(b);
     }
-    new Setting(el).addButton((b) => b.setButtonText("플래너 만들기").setCta().onClick(() => {
-      if (end && end < start) { new Notice("종료일은 시작일과 같거나 그 뒤여야 해요"); return; }
+    swatches.forEach((x, i) => x.toggleClass("is-active", i === f.cover));
+    new Setting(el).setName("시작일").setDesc("이 날이 첫 장이에요")
+      .addText((t) => { t.inputEl.type = "date"; t.setValue(Dates.key(f.start)).onChange((v) => { f.start = Dates.parseKey(v) ?? f.start; }); });
+    let endInput: HTMLInputElement | null = null;
+    const endRow = new Setting(el).setName("종료일").setDesc("정하면 그날에서 멈추고, 비워 두면 계속 넘어가요")
+      .addText((t) => { t.inputEl.type = "date"; endInput = t.inputEl; t.setValue(f.end ? Dates.key(f.end) : "").onChange((v) => { f.end = v ? Dates.parseKey(v) : null; }); });
+    const setEnd = (e: Date | null) => { f.end = e; if (endInput) endInput.value = e ? Dates.key(e) : ""; };
+    const quick: [string, (s: Date) => Date | null][] = [
+      ["없음", () => null],
+      ["1개월", (s) => new Date(s.getFullYear(), s.getMonth() + 1, s.getDate() - 1)],
+      ["3개월", (s) => new Date(s.getFullYear(), s.getMonth() + 3, s.getDate() - 1)],
+      ["6개월", (s) => new Date(s.getFullYear(), s.getMonth() + 6, s.getDate() - 1)],
+      ["1년", (s) => new Date(s.getFullYear() + 1, s.getMonth(), s.getDate() - 1)],
+      ["올해 말", (s) => new Date(s.getFullYear(), 11, 31)],
+    ];
+    for (const [label, fn] of quick) endRow.addButton((b) => b.setButtonText(label).onClick(() => setEnd(fn(f.start))));
+    const warnEl = el.createEl("p", { cls: "setting-item-description mod-warning" });
+    new Setting(el).addButton((b) => b.setButtonText(this.init.ok).setCta().onClick(() => {
+      f.name = f.name.trim();
+      if (!f.name) { new Notice("이름을 적어 주세요"); return; }
+      if (f.end && f.end < f.start) { new Notice("종료일은 시작일과 같거나 그 뒤여야 해요"); return; }
+      const w = this.init.warn?.(f);
+      if (w && warnEl.getText() !== w) { warnEl.setText(`${w} 한 번 더 누르면 저장해요.`); return; }
       this.close();
-      this.onDone(name.trim() || this.suggested, start, end);
+      this.onDone(f);
     }));
   }
 

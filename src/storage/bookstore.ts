@@ -152,6 +152,38 @@ export class BookStore {
     }
   }
 
+  /** 책 정보 고치기: 날짜는 날 단위로, 종료 < 시작이면 종료 = 시작 */
+  async updateBook(id: UUID, patch: Partial<Pick<BookInfo, "name" | "start" | "end" | "cover">>): Promise<BookInfo | null> {
+    const b = this.library.books.find((x) => sameUUID(x.id, id));
+    if (!b) return null;
+    if (patch.name != null) b.name = patch.name;
+    if (patch.cover != null) b.cover = patch.cover;
+    if (patch.start) b.start = Dates.day(patch.start);
+    if (patch.end !== undefined) b.end = patch.end ? Dates.day(patch.end) : null;
+    if (b.end && b.end < b.start) b.end = b.start;
+    await this.saveLibrary();
+    return b;
+  }
+
+  /** 책을 지운다: 책 파일과 D-day 옮기기 백업을 지우고 책장에서 뺀다 (읽지 못한 파일의 사본은 남긴다).
+   * 펼친 책이었으면 다음 책 (내가 만든 책 먼저, 없으면 예시) 을 펼친 책으로 둔다. 남은 책이 없으면 지우지 않는다. */
+  async deleteBook(id: UUID): Promise<BookInfo | null> {
+    const i = this.library.books.findIndex((x) => sameUUID(x.id, id));
+    if (i < 0 || this.library.books.length <= 1) return null;
+    const path = this.bookPath(id);
+    for (const f of [path, `${path}.tmp`, `${path}.before-per-day-dday.json`]) {
+      if (await this.fs.exists(f)) await this.fs.remove(f);
+    }
+    this.library.books.splice(i, 1);
+    this.unreadableBooks.delete(id.toUpperCase());
+    if (sameUUID(this.library.activeID, id)) {
+      const next = this.library.books.find((b) => !b.isSample) ?? this.library.books[0];
+      this.library.activeID = next.id;
+    }
+    await this.saveLibrary();
+    return this.activeBook;
+  }
+
   /** 새 책. 형광펜 · 기본 컬러는 inherit 에서 이어받는다 */
   async createBook(name: string, start: Date, end: Date | null, cover = 0, inherit?: PlannerData["prefs"]): Promise<BookInfo> {
     const s = Dates.day(start);

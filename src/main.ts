@@ -5,7 +5,9 @@ import { Wrap } from "./model/ruled";
 import { canvasWrap } from "./canvasWrap";
 import { defaultZooms, PlannerView, VIEW_TYPE, Zooms } from "./view/PlannerView";
 import { UUID } from "./model/uuid";
-import { ConfirmModal } from "./view/modals";
+import { BookModal, ConfirmModal } from "./view/modals";
+import * as Dates from "./model/dates";
+import { conceptOf } from "./view/theme";
 import { concepts } from "./view/theme";
 
 interface Settings { folder: string; zooms: Zooms; zoomVersion: number; }
@@ -22,7 +24,7 @@ export default class TenMinPlanner extends Plugin {
   planner: Planner | null = null;
   loadError: string | null = null;
   wrap!: Wrap;
-  private saveTimer: number | null = null;
+  saveTimer: number | null = null;
   private listeners = new Set<() => void>();
   private editing = false;
   private lastLocalEdit = 0;
@@ -70,7 +72,7 @@ export default class TenMinPlanner extends Plugin {
     return () => this.listeners.delete(fn);
   }
 
-  private notify(): void { for (const fn of this.listeners) fn(); }
+  notify(): void { for (const fn of this.listeners) fn(); }
 
   setEditing(on: boolean): void {
     this.editing = on;
@@ -164,10 +166,47 @@ export default class TenMinPlanner extends Plugin {
     this.useBook(id, data);
   }
 
-  async createBook(name: string, start: Date, end: Date | null): Promise<void> {
+  async createBook(name: string, start: Date, end: Date | null, cover = 0): Promise<void> {
     await this.flush();
-    const book = await this.store.createBook(name, start, end, 0, this.planner?.data.prefs);
+    const book = await this.store.createBook(name, start, end, cover, this.planner?.data.prefs);
     this.useBook(book.id, (await this.store.loadBook(book.id))!);
+  }
+
+  /** 새 플래너 창 (제안 이름 "새 플래너" / "새 플래너 n") */
+  newBookDialog(after?: () => void): void {
+    const names = this.store.library.books.map((b) => b.name);
+    let name = "새 플래너";
+    for (let n = 2; names.includes(name); n++) name = `새 플래너 ${n}`;
+    if (names.includes(name)) name = "새 플래너";
+    new BookModal(this.app, { title: "새 플래너", ok: "플래너 만들기", name, start: new Date(), end: null, cover: 0,
+      warn: (f) => (this.store.library.books.some((b) => b.name === f.name) ? "같은 이름의 플래너가 이미 있어요." : null) },
+    async (f) => { await this.createBook(f.name, f.start, f.end, f.cover); after?.(); }).open();
+  }
+
+  /** 플래너 고치기: 펼친 책이면 새 기간 밖에 기록한 날이 있을 때 먼저 알린다 (기록은 지워지지 않는다) */
+  editBookDialog(id: UUID, after?: () => void): void {
+    const b = this.store.library.books.find((x) => x.id === id);
+    if (!b) return;
+    const active = this.planner?.book?.id === id ? this.planner : null;
+    new BookModal(this.app, { title: "플래너 고치기", ok: "저장", name: b.name, start: b.start, end: b.end, cover: b.cover,
+      warn: (f) => {
+        const n = active?.recordedOutside(f.start, f.end) ?? 0;
+        return n ? `새 기간 밖에 기록한 날이 ${n}일 있어요. 기록은 지워지지 않지만, 기간을 넓히기 전에는 그 장을 펼칠 수 없어요.` : null;
+      } },
+    async (f) => { await this.store.updateBook(id, f); this.notify(); after?.(); }).open();
+  }
+
+  /** 플래너 지우기 (확인 후). 펼친 책이면 다음 책을 펼친다 */
+  async deleteBook(id: UUID): Promise<void> {
+    const wasActive = this.planner?.book?.id === id;
+    if (!wasActive) await this.flush();
+    if (wasActive && this.saveTimer != null) { window.clearTimeout(this.saveTimer); this.saveTimer = null; }
+    const next = await this.store.deleteBook(id);
+    if (!next) { new Notice("10분 플래너: 마지막 한 권은 지울 수 없어요"); return; }
+    if (wasActive) {
+      const data = await this.store.loadBook(next.id);
+      if (data) this.useBook(next.id, data);
+    } else this.notify();
   }
 
   private externalChanged(): void {

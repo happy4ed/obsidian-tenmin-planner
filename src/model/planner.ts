@@ -94,6 +94,20 @@ export class Planner {
     this.onChange();
   }
 
+  /** 첫 장에 적는 말 */
+  setMotto(text: string): void { this.editPrefs((p) => { p.motto = text; }); }
+
+  /** 이 기간 밖에 있는 기록한 날 수 (기간을 줄이기 전 경고용) */
+  recordedOutside(start: Date, end: Date | null): number {
+    const s = Dates.key(Dates.day(start)), e = end ? Dates.key(Dates.day(end)) : null;
+    return Object.entries(this.data.days).filter(([k, r]) => hasRecord(r) && (k < s || (e != null && k > e))).length;
+  }
+
+  /** 저장한 D-day 를 붙여 둔 날 수 */
+  ddayAttachedDays(libraryID: UUID): number {
+    return Object.values(this.data.days).filter((r) => r.ddays.some((d) => sameUUID(d.source, libraryID))).length;
+  }
+
   get recordedDayCount(): number {
     return Object.values(this.data.days).filter(hasRecord).length;
   }
