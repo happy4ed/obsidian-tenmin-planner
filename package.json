@@ -1,0 +1,24 @@
+{
+  "name": "obsidian-tenmin-planner",
+  "version": "0.1.0",
+  "description": "10분 단위 종이 플래너를 Obsidian 안에서 — 일간 · 주간 · 홈, 형광펜 타임테이블",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc -noEmit && node esbuild.config.mjs production",
+    "test": "vitest run"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "builtin-modules": "^4.0.0",
+    "esbuild": "^0.24.2",
+    "obsidian": "^1.14.4",
+    "typescript": "^5.9.3",
+    "vitest": "^2.1.9"
+  },
+  "dependencies": {
+    "preact": "^10.29.8"
+  }
+}
