@@ -11,22 +11,29 @@ import { TimeNote } from "../model/types";
 import { TEXT_SCALE } from "../canvasWrap";
 
 const COLS = 6, ROWS = 24;
-const W = COLS * F.cell, H = ROWS * F.hourPitch;
 
 interface Stroke { start: number; before: number[]; previous: [number, number] | null; value: number; last: number; }
 
-export function Timetable({ slots, notes, accent }: { slots: number[]; notes: TimeNote[]; accent: string }) {
+export interface TimetableProps {
+  date: Date; slots: number[]; notes: TimeNote[]; accent: string;
+  /** 칸 영역 왼쪽 위 (디자인 단위)와 10분 칸 폭 · 한 시간 줄 높이 */
+  x: number; y: number; cellW: number; rowH: number;
+  disabled?: boolean;
+}
+
+export function Timetable({ date, slots, notes, accent, x, y, cellW, rowH, disabled }: TimetableProps) {
   const c = useCtx();
-  const { planner: p, date } = c;
+  const p = c.planner;
+  const W = COLS * cellW, H = ROWS * rowH;
   const stroke = useRef<Stroke | null>(null);
   const el = useRef<HTMLDivElement>(null);
 
   const slotAt = (e: PointerEvent): number => {
     const r = el.current!.getBoundingClientRect();
-    const x = ((e.clientX - r.left) / r.width) * W;
-    const y = ((e.clientY - r.top) / r.height) * H;
-    const col = Math.min(COLS - 1, Math.max(0, Math.floor(x / F.cell)));
-    const row = Math.min(ROWS - 1, Math.max(0, Math.floor(y / F.hourPitch)));
+    const px = ((e.clientX - r.left) / r.width) * W;
+    const py = ((e.clientY - r.top) / r.height) * H;
+    const col = Math.min(COLS - 1, Math.max(0, Math.floor(px / cellW)));
+    const row = Math.min(ROWS - 1, Math.max(0, Math.floor(py / rowH)));
     return row * COLS + col;
   };
 
@@ -40,7 +47,7 @@ export function Timetable({ slots, notes, accent }: { slots: number[]; notes: Ti
   };
 
   const down = (e: PointerEvent) => {
-    if (e.button !== 0) return;
+    if (e.button !== 0 || disabled) return;
     e.preventDefault();
     c.setEditing(null);
     try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* 합성 이벤트 등 */ }
@@ -86,40 +93,41 @@ export function Timetable({ slots, notes, accent }: { slots: number[]; notes: Ti
 
   return (
     <div ref={el} class={`tmp-timetable ${c.tool === ERASER ? "is-eraser" : ""}`}
-      style={F.place({ x: F.slotsLeft, y: F.gridTop, w: W, h: H })}
+      style={F.place({ x, y, w: W, h: H })}
       onPointerDown={down as never} onPointerMove={move as never} onPointerUp={up} onPointerCancel={cancel}>
       {bars.map((b) => (
         <div key={`${b.row}-${b.c0}`} class="tmp-bar" style={{
-          left: `${b.c0 * F.cell + 1}px`, top: `${b.row * F.hourPitch + 4}px`,
-          width: `${(b.c1 - b.c0 + 1) * F.cell - 2}px`, height: `${F.hourPitch - 8}px`, background: b.color,
+          left: `${b.c0 * cellW + 1}px`, top: `${b.row * rowH + rowH * 0.08}px`,
+          width: `${(b.c1 - b.c0 + 1) * cellW - 2}px`, height: `${rowH * 0.84}px`, background: b.color,
         }} />
       ))}
-      {notes.map((n) => <NoteMark key={n.id} note={n} accent={accent} />)}
+      {notes.map((n) => <NoteMark key={n.id} note={n} accent={accent} cellW={cellW} rowH={rowH} />)}
     </div>
   );
 }
 
 /** 원본 앱에서 쓴 글씨 메모 · 밥시간 (만들기 · 고치기는 2차) */
-function NoteMark({ note, accent }: { note: TimeNote; accent: string }) {
+function NoteMark({ note, accent, cellW, rowH }: { note: TimeNote; accent: string; cellW: number; rowH: number }) {
+  const W = COLS * cellW, H = ROWS * rowH;
   const s = Math.min(note.start, note.end), e = Math.max(note.start, note.end);
   const row = Math.floor(s / COLS), col = s % COLS;
   if (note.kind === "text") {
     return (
-      <div class="tmp-note" style={{ left: `${col * F.cell + 4}px`, top: `${row * F.hourPitch}px`, width: `${(COLS - col) * F.cell - 8}px`,
-        height: `${F.hourPitch}px`, lineHeight: `${F.hourPitch}px`, fontSize: `${F.hourPitch * 0.62 * TEXT_SCALE / 0.8}px` }}>
+      <div class="tmp-note" style={{ left: `${col * cellW + 4}px`, top: `${row * rowH}px`, width: `${(COLS - col) * cellW - 8}px`,
+        height: `${rowH}px`, lineHeight: `${rowH}px`, fontSize: `${rowH * 0.62 * TEXT_SCALE / 0.8}px` }}>
         {note.text}
       </div>
     );
   }
   const er = Math.floor(e / COLS), ec = e % COLS;
-  const y0 = row * F.hourPitch + F.hourPitch / 2, y1 = er * F.hourPitch + F.hourPitch / 2;
-  const x0 = col * F.cell + F.cell / 2, x1 = (ec + 1) * F.cell - 6;
+  const y0 = row * rowH + rowH / 2, y1 = er * rowH + rowH / 2;
+  const x0 = col * cellW + cellW / 2, x1 = (ec + 1) * cellW - 6;
   return (
     <svg class="tmp-note" width={W} height={H} style={{ left: 0, top: 0 }} viewBox={`0 0 ${W} ${H}`}>
       <path d={row === er ? `M ${x0} ${y0} L ${x1} ${y1}` : `M ${x0} ${y0} L ${W - 4} ${y0} M 4 ${y1} L ${x1} ${y1}`}
         stroke={accent} stroke-width={4} fill="none" stroke-linecap="round" />
       <path d={`M ${x1 - 12} ${y1 - 9} L ${x1} ${y1} L ${x1 - 12} ${y1 + 9}`} stroke={accent} stroke-width={4} fill="none" stroke-linecap="round" />
-      <text x={x0} y={y0} text-anchor="middle" dominant-baseline="central" font-size={F.hourPitch * 0.6}>🍴</text>
+      <text x={x0} y={y0} text-anchor="middle" dominant-baseline="central" font-size={rowH * 0.6}>🍴</text>
     </svg>
   );
 }

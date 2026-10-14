@@ -11,7 +11,7 @@ import { TASK_FONT, taskLayout } from "../model/day";
 import { bookContains } from "../model/planner";
 import * as Dates from "../model/dates";
 
-const taskKey = (id: string) => `t|${id}`;
+export const taskKey = (id: string) => `t|${id}`;
 
 /** 펜으로 그린 체크 표시 (원본 MarkShape) */
 export function MarkGlyph({ mark, size, color, stroke }: { mark: Mark; size: number; color: string; stroke: number }) {
@@ -28,7 +28,7 @@ export function MarkGlyph({ mark, size, color, stroke }: { mark: Mark; size: num
   );
 }
 
-function categoryMenu(e: MouseEvent, menu: Menu, task: PlanTask, onPick: (cat: number | null) => void, cats: { id: number; name: string; hex: string }[]) {
+export function categoryMenu(e: MouseEvent, menu: Menu, task: PlanTask, onPick: (cat: number | null) => void, cats: { id: number; name: string; hex: string }[]) {
   for (const c of cats) {
     menu.addItem((it) => it.setTitle(`● ${c.name}`).setChecked(task.cat === c.id).onClick(() => onPick(c.id)));
   }
@@ -81,19 +81,7 @@ function TaskEntry({ task, k, L, pitch, sc, tasks, accent }: {
   const contextMenu = (e: MouseEvent) => {
     if (editing) return; // 쓰는 중이면 글상자 기본 메뉴
     e.preventDefault();
-    const m = new Menu();
-    m.addItem((it) => it.setTitle("형광펜 (분류)…").onClick(() => categoryMenu(e, new Menu(), task, (v) => p.setCategory(date, task.id, v), p.categories)));
-    m.addSeparator();
-    for (const mk of [Mark.none, Mark.done, Mark.partial, Mark.missed, Mark.moved]) {
-      m.addItem((it) => it.setTitle(markLabel[mk]).setChecked(task.mark === mk).onClick(() => p.setMark(date, task.id, mk)));
-    }
-    m.addSeparator();
-    const next = Dates.addDays(1, date);
-    // 책의 마지막 날이면 → 표시만 한다 (다음 날로 넘기지 않는다)
-    m.addItem((it) => it.setTitle(p.book && !bookContains(p.book, next) ? "내일로 미루기 (마지막 날 — 표시만)" : "내일로 미루기")
-      .onClick(() => { if (c.editing?.startsWith("t|")) c.setEditing(null); p.postpone(date, task.id); }));
-    m.addItem((it) => it.setTitle("삭제").onClick(() => p.deleteTask(date, task.id)));
-    m.showAtMouseEvent(e);
+    taskMenu(e, c, date, task);
   };
 
   return (
@@ -127,8 +115,26 @@ function TaskEntry({ task, k, L, pitch, sc, tasks, accent }: {
   );
 }
 
+/** 할 일 오른쪽 클릭 메뉴: 형광펜 · 체크 표시 · 내일로 미루기 · 삭제 (일간 · 주간 공용) */
+export function taskMenu(e: MouseEvent, c: ReturnType<typeof useCtx>, date: Date, task: PlanTask) {
+  const p = c.planner;
+  const m = new Menu();
+  m.addItem((it) => it.setTitle("형광펜 (분류)…").onClick(() => categoryMenu(e, new Menu(), task, (v) => p.setCategory(date, task.id, v), p.categories)));
+  m.addSeparator();
+  for (const mk of [Mark.none, Mark.done, Mark.partial, Mark.missed, Mark.moved]) {
+    m.addItem((it) => it.setTitle(markLabel[mk]).setChecked(task.mark === mk).onClick(() => p.setMark(date, task.id, mk)));
+  }
+  m.addSeparator();
+  const next = Dates.addDays(1, date);
+  // 책의 마지막 날이면 → 표시만 한다 (다음 날로 넘기지 않는다)
+  m.addItem((it) => it.setTitle(p.book && !bookContains(p.book, next) ? "내일로 미루기 (마지막 날 — 표시만)" : "내일로 미루기")
+    .onClick(() => { if (c.editing?.startsWith("t|")) c.setEditing(null); p.postpone(date, task.id); }));
+  m.addItem((it) => it.setTitle("삭제").onClick(() => p.deleteTask(date, task.id)));
+  m.showAtMouseEvent(e);
+}
+
 /** 형광펜을 아래쪽에 굵게 그은 모양 */
-const highlight = (color: string) => `linear-gradient(to top, transparent 8%, ${color}DD 8%, ${color}DD 52%, transparent 52%)`;
+export const highlight = (color: string) => `linear-gradient(to top, transparent 8%, ${color}DD 8%, ${color}DD 52%, transparent 52%)`;
 
 function TaskEditor({ task, L, k, font, pitch }: { task: PlanTask; L: RowLayout; k: number; font: number; pitch: number }) {
   const c = useCtx();

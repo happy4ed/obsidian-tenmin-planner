@@ -15,7 +15,7 @@
 .tmp-nav-date { white-space: nowrap; min-width: 120px; text-align: center; font-variant-numeric: tabular-nums; font-size: var(--font-ui-small); }
 .tmp-pens { display: flex; flex-wrap: wrap; gap: 4px; flex: 1 1 320px; min-width: 0; }
 .tmp-pen { display: inline-flex; align-items: center; gap: 6px; flex: none; white-space: nowrap; }
-.tmp-palette > button, .tmp-nav button { white-space: nowrap; }
+.tmp-palette button { white-space: nowrap; }
 .tmp-pen.is-active { font-weight: 700; box-shadow: inset 0 -3px 0 var(--interactive-accent); }
 .tmp-swatch { width: 14px; height: 14px; border-radius: 4px; display: inline-block; }
 .tmp-zoom { display: flex; gap: 2px; }
@@ -85,3 +85,84 @@
 .tmp-timetable.is-eraser { cursor: cell; }
 .tmp-bar { position: absolute; opacity: .86; mix-blend-mode: multiply; border-radius: 3px; pointer-events: none; }
 .tmp-note { position: absolute; pointer-events: none; white-space: nowrap; overflow: hidden; color: #34333A; }
+
+/* 보기 전환 */
+.tmp-kinds { display: flex; gap: 2px; }
+.tmp-kinds .is-active { font-weight: 700; box-shadow: inset 0 -3px 0 var(--interactive-accent); }
+
+/* 주간 */
+.tmp-wk-label { font: 600 17px "Avenir Next", "Segoe UI", system-ui, sans-serif; fill: #2B2B2F; letter-spacing: .5px; }
+.tmp-wk-weekday { font: 600 15px "Avenir Next", "Segoe UI", system-ui, sans-serif; letter-spacing: .6px; }
+.tmp-wk-hour { font: 700 13px "Avenir Next", "Segoe UI", system-ui, sans-serif; fill: #2B2B2F; }
+.tmp-wk-unit { font: 700 18px "Avenir Next", "Segoe UI", system-ui, sans-serif; fill: #2B2B2F; }
+.tmp-wk-col { position: absolute; }
+.tmp-wk-col > * { position: absolute; }
+.tmp-wk-date { display: flex; align-items: center; gap: 6px; padding: 0 6px; font-size: 30px; color: #34333A;
+  background: transparent !important; border: none; box-shadow: none !important; border-radius: 6px; cursor: pointer; }
+.tmp-wk-date:hover { background: rgba(0, 0, 0, .04) !important; }
+.tmp-wk-arrow { font-size: 18px; opacity: 0; }
+.tmp-wk-date:hover .tmp-wk-arrow { opacity: .6; }
+.tmp-wk-dayoff { border: 1.5px solid; border-radius: 4px; font: 700 12px system-ui, sans-serif; display: flex; align-items: center;
+  justify-content: center; letter-spacing: 1px; pointer-events: none; }
+.tmp-wk-task { white-space: nowrap; overflow: hidden; cursor: text; }
+.tmp-wk-catbar { border-radius: 2px; pointer-events: none; }
+.tmp-wk-more { padding: 0; font-size: 14px; border-radius: 10px; }
+.tmp-wk-sum { display: flex; align-items: center; justify-content: flex-end; font-size: 34px; font-weight: 700; pointer-events: none; }
+.tmp-wk-locked { background: rgba(252, 251, 247, .78); }
+.tmp-wk-goal-view { display: flex; align-items: center; cursor: text; white-space: nowrap; overflow: hidden; }
+.tmp-wk-goal-mark { padding: 0 10px; border-left: 3px solid #E0474C; border-top: 3px solid #E0474C; }
+.tmp-wk-stars { display: flex; align-items: center; justify-content: center; gap: 4px; }
+.tmp-wk-stars button { padding: 0; font-size: 26px; line-height: 1; color: #C9C5CB; background: transparent !important;
+  border: none; box-shadow: none !important; cursor: pointer; }
+.tmp-wk-stars button.is-on { color: #E0474C; }
+
+/* 홈 */
+.tmp-home { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; max-width: 1200px; margin: 0 auto; }
+.tmp-card { background: #FCFBF7; color: #34333A; border-radius: 10px; padding: 12px 14px; box-shadow: 0 1px 4px rgba(0, 0, 0, .1); }
+.tmp-card.is-wide { grid-column: 1 / -1; }
+.tmp-card.is-click { cursor: pointer; }
+.tmp-card h4 { margin: 0 0 8px; font: 700 12px system-ui, sans-serif; letter-spacing: 1px; color: #2B2B2F; }
+.tmp-card-empty { color: #9A96A0; font-size: 14px; padding: 8px 0; }
+.tmp-ov-book { font-size: 18px; font-weight: 600; }
+.tmp-ov-book small { font-weight: 400; color: #9A96A0; margin-left: 6px; }
+.tmp-ov-goal { font-size: 16px; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tmp-dd-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 16px; }
+.tmp-dd-row b { font-size: 24px; }
+.tmp-sum-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.tmp-sum { display: flex; flex-direction: column; }
+.tmp-sum small { font-size: 11px; letter-spacing: .8px; color: #2B2B2F; font-weight: 600; }
+.tmp-sum b { font-size: 26px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.tmp-sum span { font-size: 12px; color: #9A96A0; }
+.tmp-weeks { display: flex; align-items: stretch; gap: 4px; height: 160px; }
+.tmp-weeks-axis { display: flex; flex-direction: column; justify-content: space-between; font-size: 10px; color: #9A96A0; padding-bottom: 16px; }
+.tmp-week-bar { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; padding: 0; background: transparent !important;
+  border: none; box-shadow: none !important; cursor: pointer; height: 100%; min-width: 0; }
+.tmp-week-bar .stack { flex: 1; display: flex; flex-direction: column-reverse; justify-content: flex-start; border-bottom: 1px solid #C9C6BF; }
+.tmp-week-bar .stack > div { width: 100%; border-radius: 2px 2px 0 0; }
+.tmp-week-bar small { font-size: 9px; color: #9A96A0; white-space: nowrap; overflow: hidden; height: 16px; }
+.tmp-hl-row { display: grid; grid-template-columns: 90px 1fr 64px; gap: 6px; align-items: center; font-size: 13px; margin: 3px 0; }
+.tmp-hl-row .bar { height: 10px; background: #F2EFE8; border-radius: 5px; overflow: hidden; }
+.tmp-hl-row .bar i { display: block; height: 100%; }
+.tmp-hl-row.is-faint .bar i { opacity: .35; }
+.tmp-hl-row .v { text-align: right; font-variant-numeric: tabular-nums; }
+.tmp-note-small { display: block; margin-top: 6px; color: #9A96A0; font-size: 12px; }
+.tmp-heat { display: flex; flex-direction: column; gap: 1px; }
+.tmp-heat .row { display: grid; grid-template-columns: 22px repeat(6, 1fr); gap: 1px; }
+.tmp-heat .row small { font-size: 9px; color: #9A96A0; }
+.tmp-heat .row i { height: 7px; border-radius: 1px; }
+.tmp-cal { display: grid; grid-template-columns: 34px repeat(7, 1fr); gap: 3px; align-items: center; }
+.tmp-cal .head { text-align: center; font-size: 11px; color: #9A96A0; }
+.tmp-cal .mon { font-size: 10px; color: #9A96A0; }
+.tmp-cal .day { position: relative; aspect-ratio: 1; padding: 0; border: 1px solid #E6E2DA; border-radius: 4px; box-shadow: none !important; cursor: pointer; }
+.tmp-cal .day:disabled { opacity: .3 !important; cursor: default; }
+.tmp-cal .day.is-today { outline: 2px solid #E0474C; outline-offset: 1px; }
+.tmp-cal .day .off { position: absolute; top: 2px; right: 2px; width: 5px; height: 5px; border-radius: 50%; background: #3A3940; }
+.tmp-wd { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; height: 140px; }
+.tmp-wd .col { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 11px; }
+.tmp-wd .col .bar { flex: 1; width: 60%; display: flex; flex-direction: column; justify-content: flex-end; }
+.tmp-wd .col .bar i { display: block; width: 100%; border-radius: 3px 3px 0 0; }
+.tmp-wd .col.is-max { font-weight: 700; }
+.tmp-marks { display: grid; grid-template-columns: repeat(4, 1fr); text-align: center; }
+.tmp-marks b { display: block; font-size: 20px; }
+.tmp-marks small { color: #9A96A0; }
+.tmp-mark-strip { display: flex; height: 10px; border-radius: 5px; overflow: hidden; margin-top: 8px; background: #F2EFE8; }

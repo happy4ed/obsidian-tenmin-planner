@@ -20,7 +20,8 @@ export interface ViewCtx {
   editing: EditKey;
   /** 지금 쓰는 칸 (렌더 사이에 바뀐 값까지) */
   editingNow(): EditKey;
-  setEditing(k: EditKey): void;
+  /** onDate: 그 칸이 속한 날 (주간에서 다른 요일 칸을 쓸 때) */
+  setEditing(k: EditKey, onDate?: Date): void;
   setTool(t: number): void;
   go(d: Date): void;
   /** 지금 날에서 n 장 */

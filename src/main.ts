@@ -3,11 +3,11 @@ import { BookStore, FileAdapter } from "./storage/bookstore";
 import { Planner } from "./model/planner";
 import { Wrap } from "./model/ruled";
 import { canvasWrap } from "./canvasWrap";
-import { DEFAULT_ZOOM, PlannerView, VIEW_TYPE, Zoom } from "./view/PlannerView";
+import { defaultZooms, PlannerView, VIEW_TYPE, Zoom, Zooms } from "./view/PlannerView";
 import { UUID } from "./model/uuid";
 
-interface Settings { folder: string; zoom: Zoom; }
-const DEFAULTS: Settings = { folder: "Planner", zoom: DEFAULT_ZOOM };
+interface Settings { folder: string; zooms: Zooms; }
+const DEFAULTS: Settings = { folder: "Planner", zooms: defaultZooms() };
 const SAVE_DELAY_MS = 600;
 /** 쓰는 칸을 마지막으로 고친 뒤 이 시간 안이면 밖에서 바뀐 파일을 바로 넣지 않는다 (원본 editingGrace) */
 const EDITING_GRACE_MS = 5000;
@@ -25,7 +25,11 @@ export default class TenMinPlanner extends Plugin {
   private pendingReload: number | null = null;
 
   async onload(): Promise<void> {
-    this.settings = { ...DEFAULTS, ...(await this.loadData()) };
+    const saved = (await this.loadData()) ?? {};
+    // 0.1.1 의 zoom 하나 → 일간 크기로 옮긴다
+    const zooms: Zooms = { ...defaultZooms(), ...(saved.zooms ?? {}) };
+    if (saved.zoom && !saved.zooms) zooms.daily = saved.zoom as Zoom;
+    this.settings = { folder: saved.folder ?? DEFAULTS.folder, zooms };
     this.addSettingTab(new TenMinSettingTab(this.app, this));
     this.registerView(VIEW_TYPE, (leaf) => new PlannerView(leaf, this));
     this.addRibbonIcon("calendar-clock", "10분 플래너 열기", () => void this.openView());
@@ -35,7 +39,8 @@ export default class TenMinPlanner extends Plugin {
     });
 
     this.addCommand({ id: "open", name: "플래너 열기", callback: () => void this.openView() });
-    for (const [id, name, cmd] of [["prev", "이전 장", "prev"], ["next", "다음 장", "next"], ["today", "오늘", "today"]] as const) {
+    for (const [id, name, cmd] of [["prev", "이전 장", "prev"], ["next", "다음 장", "next"], ["today", "오늘", "today"],
+      ["daily", "일간 보기", "daily"], ["weekly", "주간 보기", "weekly"], ["home", "홈 (통계)", "home"]] as const) {
       this.addCommand({
         id, name,
         checkCallback: (checking) => {
