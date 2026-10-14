@@ -286,23 +286,14 @@ function Palette({ plugin, kind, setKind, label, date, tool, setTool, step, goTo
 
   const period = p.book ? `${Dates.key(p.book.start)} – ${p.book.end ? Dates.key(p.book.end) : "계속"}` : "";
 
+  // 두 줄: 위 = 쓰는 도구 (책 · 형광펜 · 지우개 · 글씨 · 밥 · 컬러), 아래 = 보기와 이동 (홈 · 주간 · 일간 · 날짜 · 오늘 · D-day · 크기 · 설정).
+  // 줄마다 한 줄로 두고 넘치면 옆으로 밀어서 본다 (줄이 늘어나 종이를 밀어내지 않게).
   return (
-    <div class="tmp-palette">
+    <>
+      <div class="tmp-palette tmp-toolbar">
       <button class="tmp-book" title={`${p.book?.name ?? ""} · ${period}`} onClick={bookMenu as never}>
         📓 {p.book?.name ?? "플래너"} ▾
       </button>
-      <div class="tmp-kinds">
-        {([["home", "홈", "H"], ["weekly", "주간", "W"], ["daily", "일간", "D"]] as const).map(([k, name, key]) => (
-          <button key={k} class={kind === k ? "is-active" : ""} title={`${name} (${key})`} onClick={() => setKind(k)}>{name}</button>
-        ))}
-      </div>
-      <div class="tmp-nav">
-        {kind !== "home" && <button aria-label="이전 장" title="이전 장 (←)" disabled={atStart} onClick={() => step(-1)}>‹</button>}
-        {kind !== "home" && <span class="tmp-nav-date">{label}</span>}
-        {kind !== "home" && <button aria-label="다음 장" title="다음 장 (→)" disabled={atEnd} onClick={() => step(1)}>›</button>}
-        <button title="오늘 (T)" disabled={isToday} onClick={goToday}>오늘</button>
-        <button title={kind === "daily" ? "이 날의 D-day" : "오늘의 D-day"} onClick={openDDay}>D-day</button>
-      </div>
       <div class="tmp-pens">
         {p.categories.map((c, i) => (
           <button key={c.id} class={`tmp-pen ${tool === c.id ? "is-active" : ""}`} title={`${c.name} (${i + 1}) — 두 번 눌러 이름 · 색 바꾸기`}
@@ -318,6 +309,20 @@ function Palette({ plugin, kind, setKind, label, date, tool, setTool, step, goTo
           onClick={() => setTool(MEAL_TOOL)}>🍴 밥</button>
       </div>
       <Colors plugin={plugin} kind={kind} date={date} />
+      </div>
+      <div class="tmp-palette tmp-navbar">
+      <div class="tmp-kinds">
+        {([["home", "홈", "H"], ["weekly", "주간", "W"], ["daily", "일간", "D"]] as const).map(([k, name, key]) => (
+          <button key={k} class={kind === k ? "is-active" : ""} title={`${name} (${key})`} onClick={() => setKind(k)}>{name}</button>
+        ))}
+      </div>
+      <div class="tmp-nav">
+        {kind !== "home" && <button aria-label="이전 장" title="이전 장 (←)" disabled={atStart} onClick={() => step(-1)}>‹</button>}
+        {kind !== "home" && <span class="tmp-nav-date">{label}</span>}
+        {kind !== "home" && <button aria-label="다음 장" title="다음 장 (→)" disabled={atEnd} onClick={() => step(1)}>›</button>}
+        <button title="오늘 (T)" disabled={isToday} onClick={goToday}>오늘</button>
+        <button title={kind === "daily" ? "이 날의 D-day" : "오늘의 D-day"} onClick={openDDay}>D-day</button>
+      </div>
       {kind !== "home" && <div class="tmp-zoom">
         <button aria-label="작게" title="작게" onClick={() => setZoom({ mode: zoom.mode, factor: Math.max(MIN_FACTOR, zoom.factor / 1.2) })}>−</button>
         {([["page", "한 장", "종이 한 장이 화면에 통째로"], ["fit", "폭", "종이가 화면 폭에 맞게"], ["text", "글자", "할 일 글씨가 Obsidian 본문 글자 크기와 같게"]] as const).map(([m, name, tip]) => (
@@ -327,7 +332,8 @@ function Palette({ plugin, kind, setKind, label, date, tool, setTool, step, goTo
         <span class="tmp-zoom-pct" title="지금 종이 배율">{Math.round(scale * 100)}%</span>
       </div>}
       <button class="tmp-gear" aria-label="설정" title="설정" onClick={() => plugin.openSettings()}>⚙</button>
-    </div>
+      </div>
+    </>
   );
 }
 
