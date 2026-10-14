@@ -27,8 +27,9 @@ export const VIEW_TYPE = "tenmin-planner";
  */
 export interface Zoom { mode: "page" | "fit" | "text"; factor: number; }
 export const DEFAULT_ZOOM: Zoom = { mode: "page", factor: 1 };
-export type Zooms = Record<"daily" | "weekly", Zoom>;
-export const defaultZooms = (): Zooms => ({ daily: { ...DEFAULT_ZOOM }, weekly: { ...DEFAULT_ZOOM } });
+export type Zooms = Record<"daily" | "weekly" | "home", Zoom>;
+/** 홈은 종이가 아니라 카드라서 배율만 (factor) 쓴다 */
+export const defaultZooms = (): Zooms => ({ daily: { ...DEFAULT_ZOOM }, weekly: { ...DEFAULT_ZOOM }, home: { mode: "fit", factor: 1 } });
 const GUTTER = 24;
 const MIN_FACTOR = 0.25, MAX_FACTOR = 3;
 
@@ -181,12 +182,15 @@ function Planner({ plugin, view }: { plugin: TenMinPlanner; view: PlannerView })
     };
   }, []);
 
-  const zk: "daily" | "weekly" = kind === "weekly" ? "weekly" : "daily";
-  const zoom = zooms[zk];
-  const setZoom = (z: Zoom) => {
-    const next = { ...zooms, [zk]: z };
-    setZooms(next);
+  const zk: keyof Zooms = kind;
+  const zoom = zooms[zk] ?? defaultZooms()[zk];
+  /** 크기 바꾸기: 빠르게 연달아 눌러도 마지막 값에서 (렌더를 기다리지 않는다) */
+  const setZoom = (z: Zoom | ((cur: Zoom) => Zoom)) => {
+    const all = plugin.settings.zooms;
+    const cur = all[zk] ?? defaultZooms()[zk];
+    const next = { ...all, [zk]: typeof z === "function" ? z(cur) : z };
     plugin.settings.zooms = next;
+    setZooms(next);
     void plugin.saveSettings();
   };
   const pageW = kind === "weekly" ? WEEK_W : F.PAGE_W, pageH = kind === "weekly" ? WEEK_H : F.PAGE_H;
@@ -335,7 +339,7 @@ function Planner({ plugin, view }: { plugin: TenMinPlanner; view: PlannerView })
       <div class="tmp-root" tabIndex={0} onKeyDown={onKey as never}>
         <Palette part="top" {...bars} />
         <div class="tmp-scroller" ref={scroller}>
-          {kind === "home" ? <HomePage openWeek={openWeek} openDay={openDay} /> : (
+          {kind === "home" ? <div class="tmp-home-zoom" style={{ zoom: String(zoom.factor) }}><HomePage openWeek={openWeek} openDay={openDay} /></div> : (
             <div class="tmp-sheet" style={{ width: `${pageW * scale}px`, height: `${pageH * scale}px` }}>
               <div class="tmp-scale" style={{ transform: `scale(${scale})`, width: `${pageW}px`, height: `${pageH}px` }}>
                 {front ? <FrontPage front={front} w={pageW} h={pageH} />
@@ -355,7 +359,7 @@ function Palette({ part, plugin, kind, setKind, label, date, tool, setTool, step
   part: "top" | "bottom";
   plugin: TenMinPlanner; kind: PageKind; setKind(k: PageKind): void; label: string; date: Date; tool: number; setTool(t: number): void;
   step(n: number): void; goToday(): void; isToday: boolean; atStart: boolean; atEnd: boolean; openDDay(): void; front: Front | null;
-  zoom: Zoom; setZoom(z: Zoom): void; scale: number; statusGap: number;
+  zoom: Zoom; setZoom(z: Zoom | ((cur: Zoom) => Zoom)): void; scale: number; statusGap: number;
 }) {
   const p = plugin.planner!;
   const books = plugin.store.library.books;
@@ -400,12 +404,19 @@ function Palette({ part, plugin, kind, setKind, label, date, tool, setTool, step
         <button title={kind === "daily" ? "이 날의 D-day" : "오늘의 D-day"} disabled={!!front} onClick={openDDay}>D-day</button>
         <button title="반복 할 일 — 매일 · 주마다 · 요일마다 · 달마다 · 연마다" onClick={() => new RepeatListModal(plugin.app, plugin.planner!, Dates.day(new Date())).open()}>↻ 반복</button>
       </div>
-      {kind !== "home" && <div class="tmp-zoom">
-        <button aria-label="작게" title="작게" onClick={() => setZoom({ mode: zoom.mode, factor: Math.max(MIN_FACTOR, zoom.factor / 1.2) })}>−</button>
+      {kind === "home" ? (
+        <div class="tmp-zoom">
+          <button aria-label="작게" title="작게" onClick={() => setZoom((z) => ({ mode: "fit", factor: Math.round(Math.max(0.5, z.factor / 1.1) * 100) / 100 }))}>−</button>
+          <button class={zoom.factor === 1 ? "is-active" : ""} title="기본 크기" onClick={() => setZoom({ mode: "fit", factor: 1 })}>기본</button>
+          <button aria-label="크게" title="크게" onClick={() => setZoom((z) => ({ mode: "fit", factor: Math.round(Math.min(2.5, z.factor * 1.1) * 100) / 100 }))}>+</button>
+          <span class="tmp-zoom-pct" title="지금 홈 배율">{Math.round(zoom.factor * 100)}%</span>
+        </div>
+      ) : <div class="tmp-zoom">
+        <button aria-label="작게" title="작게" onClick={() => setZoom((z) => ({ mode: z.mode, factor: Math.max(MIN_FACTOR, z.factor / 1.2) }))}>−</button>
         {([["page", "한 장", "종이 한 장이 화면에 통째로"], ["fit", "폭", "종이가 화면 폭에 맞게"], ["text", "글자", "할 일 글씨가 Obsidian 본문 글자 크기와 같게"]] as const).map(([m, name, tip]) => (
           <button key={m} class={zoom.mode === m ? "is-active" : ""} title={tip} onClick={() => setZoom({ mode: m, factor: 1 })}>{name}</button>
         ))}
-        <button aria-label="크게" title="크게" onClick={() => setZoom({ mode: zoom.mode, factor: Math.min(MAX_FACTOR, zoom.factor * 1.2) })}>+</button>
+        <button aria-label="크게" title="크게" onClick={() => setZoom((z) => ({ mode: z.mode, factor: Math.min(MAX_FACTOR, z.factor * 1.2) }))}>+</button>
         <span class="tmp-zoom-pct" title="지금 종이 배율">{Math.round(scale * 100)}%</span>
       </div>}
       <button class="tmp-gear" aria-label="설정" title="설정" onClick={() => plugin.openSettings()}>⚙</button>
