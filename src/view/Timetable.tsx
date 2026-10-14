@@ -11,6 +11,8 @@ import { ERASER, MEAL_TOOL, TEXT_TOOL, useCtx } from "./ctx";
 import { hex } from "./theme";
 import { repainted } from "../model/day";
 import { SLOT_COUNT, TimeNote } from "../model/types";
+import { newRule, slotTime } from "../model/repeat";
+import { RepeatEditModal } from "./repeatModals";
 import { TEXT_SCALE } from "../canvasWrap";
 
 const COLS = 6, ROWS = 24;
@@ -130,7 +132,20 @@ export function Timetable({ date, slots, notes, accent, x, y, cellW, rowH, disab
     <div ref={el} class={`tmp-timetable ${cls}`} style={F.place({ x, y, w: W, h: H })}
       onPointerDown={down as never} onPointerMove={move as never} onPointerUp={up} onPointerCancel={cancel}>
       {bars.map((b) => (
-        <div key={`${b.row}-${b.c0}`} class="tmp-bar" style={{
+        <div key={`${b.row}-${b.c0}`} class="tmp-bar" onContextMenu={(e) => {
+          if (disabled) return;
+          e.preventDefault();
+          e.stopPropagation();
+          // 이어진 같은 색 칸 (줄을 넘어가도) 을 한 일정으로
+          const at = b.row * COLS + b.c0, v = slots[at];
+          let from = at, to = b.row * COLS + b.c1;
+          while (from > 0 && slots[from - 1] === v) from--;
+          while (to < SLOT_COUNT - 1 && slots[to + 1] === v) to++;
+          new Menu().addItem((it) => it.setTitle(`이 시간을 반복으로… (${slotTime(from)}–${slotTime(to, true)})`).onClick(() => {
+            const init = { ...newRule("", date, "", v), paint: { from, to } };
+            new RepeatEditModal(c.app, p, init, null, () => {}).open();
+          })).showAtMouseEvent(e as unknown as MouseEvent);
+        }} style={{
           left: `${b.c0 * cellW + 1}px`, top: `${b.row * rowH + rowH * 0.08}px`,
           width: `${(b.c1 - b.c0 + 1) * cellW - 2}px`, height: `${rowH * 0.84}px`, background: b.color,
         }} />

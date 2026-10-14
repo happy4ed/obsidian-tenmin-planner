@@ -2,7 +2,7 @@
 import { App, Modal, Setting } from "obsidian";
 import * as Dates from "../model/dates";
 import { Planner } from "../model/planner";
-import { describeRule, newRule, nextOccurrences, RepeatEnd, RepeatFreq, RepeatRule, WEEKDAY_KO, weekdayIndex, MonthlyMode } from "../model/repeat";
+import { describeRule, newRule, nextOccurrences, RepeatEnd, RepeatFreq, RepeatRule, slotTime, WEEKDAY_KO, weekdayIndex, MonthlyMode } from "../model/repeat";
 import { UUID } from "../model/uuid";
 
 const FREQ: Record<RepeatFreq, string> = { daily: "매일", weekly: "주마다", weekdays: "요일마다", monthly: "달마다", yearly: "연마다" };
@@ -36,7 +36,7 @@ export function repeatRow(el: HTMLElement, app: App, p: Planner, r: RepeatRule, 
   const next = nextOccurrences(r, today, 1)[0];
   const cat = p.category(r.cat);
   new Setting(el)
-    .setName(`${r.text || "(할 일 없음)"}${cat ? `  · ${cat.name}` : ""}`)
+    .setName(`${r.text || (r.paint ? "타임테이블" : "(할 일 없음)")}${cat ? `  · ${cat.name}` : ""}`)
     .setDesc(`${describeRule(r)} · ${next ? `다음 ${short(next)}` : "더 생기지 않아요"}`)
     .addExtraButton((b) => b.setIcon(r.paused ? "play" : "pause").setTooltip(r.paused ? "다시 반복" : "잠깐 멈춤")
       .onClick(() => { p.updateRepeat(r.id, (x) => { x.paused = !x.paused; }); refresh(); }))
@@ -80,12 +80,34 @@ export class RepeatEditModal extends Modal {
     el.empty();
     this.titleEl.setText(this.id ? "반복 고치기" : "반복 만들기");
 
-    new Setting(el).setName("할 일").addText((t) => { t.setPlaceholder("예: 운동 30분").setValue(r.text).onChange((v) => { r.text = v; }); window.setTimeout(() => t.inputEl.focus(), 0); });
-    new Setting(el).setName("형광펜 (분류)").addDropdown((d) => {
+    new Setting(el).setName("할 일").setDesc("타임테이블만 칠할 거면 비워 둬도 돼요")
+      .addText((t) => { t.setPlaceholder("예: 운동 30분").setValue(r.text).onChange((v) => { r.text = v; }); window.setTimeout(() => t.inputEl.focus(), 0); });
+    new Setting(el).setName("형광펜").setDesc("할 일의 분류이자 타임테이블을 칠할 색").addDropdown((d) => {
       d.addOption("", "없음");
       for (const c of this.p.categories) d.addOption(String(c.id), c.name);
       d.setValue(r.cat == null ? "" : String(r.cat)).onChange((v) => { r.cat = v === "" ? null : Number(v); });
     });
+
+    // 타임테이블 칠하기: 시작 ~ 끝 시각 (10분 칸)
+    const paintRow = new Setting(el).setName("타임테이블 칠하기");
+    paintRow.addToggle((t) => t.setValue(!!r.paint).onChange((v) => {
+      r.paint = v ? r.paint ?? { from: 18, to: 23 } : null;
+      if (v && r.cat == null) r.cat = this.p.categories[0]?.id ?? null;
+      this.render();
+    }));
+    if (r.paint) {
+      const pr = r.paint;
+      const times = Array.from({ length: 144 }, (_, i) => i);
+      paintRow.addDropdown((d) => {
+        for (const i of times) d.addOption(String(i), slotTime(i));
+        d.setValue(String(pr.from)).onChange((v) => { pr.from = Number(v); if (pr.to < pr.from) pr.to = pr.from; this.render(); });
+      });
+      paintRow.addDropdown((d) => {
+        for (const i of times) if (i >= pr.from) d.addOption(String(i), `~ ${slotTime(i, true)}`);
+        d.setValue(String(pr.to)).onChange((v) => { pr.to = Number(v); this.preview(); });
+      });
+      paintRow.setDesc(`비어 있는 칸만 칠해요 (이미 칠한 칸은 그대로). 지우개로 지운 날은 다시 칠하지 않아요.`);
+    }
 
     new Setting(el).setName("반복").addDropdown((d) => {
       for (const [k, v] of Object.entries(FREQ)) d.addOption(k, v);
@@ -150,11 +172,12 @@ export class RepeatEditModal extends Modal {
     new Setting(el).addButton((b) => b.setButtonText("취소").onClick(() => this.close()))
       .addButton((b) => b.setButtonText(this.id ? "저장" : "반복 만들기").setCta().onClick(() => {
         r.text = r.text.trim();
-        if (!r.text) { this.setPreview("할 일을 적어 주세요."); return; }
+        if (!r.text && !r.paint) { this.setPreview("할 일을 적거나 타임테이블 칠하기를 켜 주세요."); return; }
+        if (r.paint && r.cat == null) { this.setPreview("칠할 형광펜을 골라 주세요."); return; }
         if (r.freq === "weekdays" && !r.weekdays.length) { this.setPreview("요일을 하나 이상 골라 주세요."); return; }
         if (this.id) {
           const v = r;
-          this.p.updateRepeat(this.id, (x) => Object.assign(x, { ...v, id: x.id, exceptions: x.exceptions }));
+          this.p.updateRepeat(this.id, (x) => Object.assign(x, { ...v, id: x.id, exceptions: x.exceptions, paintedDays: x.paintedDays }));
         } else {
           const { id: _id, exceptions: _e, ...rest } = r;
           const nid = this.p.addRepeat(rest);

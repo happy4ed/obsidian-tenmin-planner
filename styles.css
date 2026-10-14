@@ -102,6 +102,8 @@
 .tmp-timetable { cursor: crosshair; touch-action: none; }
 .tmp-timetable.is-eraser { cursor: cell; }
 .tmp-bar { position: absolute; opacity: .86; mix-blend-mode: multiply; border-radius: 3px; pointer-events: none; }
+/* 오른쪽 클릭만 받는다 (칠하기 끌기는 그대로 타임테이블이 받는다) */
+.tmp-timetable:not(.is-text):not(.is-meal) .tmp-bar { pointer-events: auto; }
 .tmp-note { position: absolute; pointer-events: none; white-space: nowrap; overflow: hidden; color: #34333A; }
 
 /* 보기 전환 */

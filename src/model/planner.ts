@@ -207,8 +207,8 @@ export class Planner {
   get repeats(): RepeatRule[] { return this.data.prefs.repeats; }
 
   /** 새 반복. 시작일부터 바로 그날 할 일도 만든다 */
-  addRepeat(r: Omit<RepeatRule, "id" | "exceptions">): UUID {
-    const rule: RepeatRule = { ...r, id: newUUID(), exceptions: [] };
+  addRepeat(r: Omit<RepeatRule, "id" | "exceptions" | "paintedDays">): UUID {
+    const rule: RepeatRule = { ...r, id: newUUID(), exceptions: [], paintedDays: [] };
     this.editPrefs((p) => p.repeats.push(rule));
     return rule.id;
   }
@@ -228,8 +228,11 @@ export class Planner {
         if (k <= today) continue;
         const d = Dates.parseKey(k)!;
         const occ = occurrenceId(rule, d);
-        if (!r.tasks.some((t) => sameUUID(t.id, occ) && t.mark === Mark.none)) continue;
+        const hasTask = r.tasks.some((t) => sameUUID(t.id, occ) && t.mark === Mark.none);
+        const painted = rule.paint && rule.cat != null && rule.paintedDays.includes(k);
+        if (!hasTask && !painted) continue;
         r.tasks = r.tasks.filter((t) => !(sameUUID(t.id, occ) && t.mark === Mark.none));
+        if (painted) for (let i = rule.paint!.from; i <= rule.paint!.to; i++) if (r.slots[i] === rule.cat) r.slots[i] = -1;
         if (isEmptyDay(r)) delete this.data.days[k];
       }
     }
@@ -254,7 +257,7 @@ export class Planner {
     let n = 0;
     for (const [k, r] of Object.entries(this.data.days)) {
       const occ = occurrenceId(rule, Dates.parseKey(k)!);
-      if (r.tasks.some((t) => sameUUID(t.id, occ))) n++;
+      if (r.tasks.some((t) => sameUUID(t.id, occ)) || rule.paintedDays.includes(k)) n++;
     }
     return n;
   }
@@ -268,30 +271,42 @@ export class Planner {
     }
   }
 
-  /** 펼친 날들에 반복 할 일을 만든다 (책 기간 밖 · 이미 만든 날 · 지운 날 · DAY OFF 건너뛰기는 빼고). 만든 게 있으면 true */
+  /** 펼친 날들에 반복 할 일을 만들고 타임테이블을 칠한다 (책 기간 밖 · 이미 한 날 · 지운 날 · DAY OFF 건너뛰기는 빼고).
+   * 칠하기는 빈 칸에만 (이미 칠한 칸은 그대로) 하고, 한 번 칠한 날은 지워도 다시 칠하지 않는다. 바꾼 게 있으면 true */
   applyRepeats(dates: Date[]): boolean {
     if (!this.repeats.length) return false;
     let made = false;
     for (const d of dates) {
       if (this.book && !bookContains(this.book, d)) continue;
       const k = Dates.key(d);
-      const due = this.repeats.filter((rule) => occursOn(rule, d));
+      const due = this.repeats.filter((rule) => rule.paused ? false : this.repeatDueOn(rule, d));
       if (!due.length) continue;
       const cur = this.data.days[k];
-      const todo = due.filter((rule) => {
-        if (rule.skipDayOff && cur?.dayOff) return false;
+      const live = due.filter((rule) => !(rule.skipDayOff && cur?.dayOff));
+      const todo = live.filter((rule) => {
+        if (!rule.text.trim() || rule.exceptions.includes(k)) return false;
         const occ = occurrenceId(rule, d);
         return !cur?.tasks.some((t) => sameUUID(t.id, occ));
       });
-      if (!todo.length) continue;
+      const paints = live.filter((rule) => rule.paint && rule.cat != null && !rule.paintedDays.includes(k));
+      if (!todo.length && !paints.length) continue;
+      for (const rule of paints) rule.paintedDays.push(k);
       this.editDay(d, (r) => {
         for (const rule of todo) {
           insertCarried(r, { id: occurrenceId(rule, d), text: rule.text, mark: Mark.none, cat: rule.cat, carriedFrom: null, row: null }, this.wrap);
+        }
+        for (const rule of paints) {
+          for (let i = rule.paint!.from; i <= rule.paint!.to; i++) if (r.slots[i] < 0) r.slots[i] = rule.cat!;
         }
       });
       made = true;
     }
     return made;
+  }
+
+  /** 끝 · 횟수 · 모양으로 그날 반복하는지 (지운 날 예외는 할 일에만 적용하므로 여기서는 보지 않는다) */
+  private repeatDueOn(rule: RepeatRule, d: Date): boolean {
+    return occursOn({ ...rule, exceptions: [] }, d);
   }
 
   // ── COMMENT · MEMO ───────────────────────────────────

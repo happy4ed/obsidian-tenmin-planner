@@ -34,6 +34,10 @@ export interface RepeatRule {
   paused: boolean;
   /** 사용자가 지운 날 (yyyy-MM-dd) — 다시 만들지 않는다 */
   exceptions: string[];
+  /** 타임테이블 칠하기: 칸 from ~ to (0 = 06:00, 끝 칸 포함) 을 cat 형광펜으로. null 이면 칠하지 않는다 */
+  paint: { from: number; to: number } | null;
+  /** 이미 칠한 날 (yyyy-MM-dd) — 지우개로 지워도 다시 칠하지 않게 */
+  paintedDays: string[];
 }
 
 export const WEEKDAY_KO = ["월", "화", "수", "목", "금", "토", "일"];
@@ -49,7 +53,13 @@ const nthOfMonth = (d: Date) => Math.floor((d.getDate() - 1) / 7) + 1;
 
 export function newRule(id: UUID, start: Date, text = "", cat: number | null = null): RepeatRule {
   return { id, text, cat, freq: "daily", interval: 1, weekdays: [weekdayIndex(start)], monthly: "date",
-    start: Dates.day(start), end: { type: "never" }, skipDayOff: false, paused: false, exceptions: [] };
+    start: Dates.day(start), end: { type: "never" }, skipDayOff: false, paused: false, exceptions: [], paint: null, paintedDays: [] };
+}
+
+/** 칸 번호 → "09:30" (0 = 06:00, 10분 칸). end 면 칸이 끝나는 시각 */
+export function slotTime(i: number, end = false): string {
+  const m = (6 * 60 + (i + (end ? 1 : 0)) * 10) % (24 * 60);
+  return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 }
 
 /** 규칙 모양만 보고 그날이 반복하는 날인지 (끝 · 횟수 · 예외 · 멈춤은 보지 않는다) */
@@ -145,7 +155,8 @@ export function describeRule(r: RepeatRule): string {
     case "yearly": base = `${n === 1 ? "매년" : `${n}년마다`} ${s.getMonth() + 1}월 ${s.getDate()}일`; break;
   }
   const end = r.end.type === "until" ? ` · ${Dates.key(r.end.until)} 까지` : r.end.type === "count" ? ` · ${r.end.count}번` : "";
-  return `${base}${end}${r.skipDayOff ? " · DAY OFF 빼고" : ""}${r.paused ? " · 멈춤" : ""}`;
+  const paint = r.paint ? ` · ${slotTime(r.paint.from)}–${slotTime(r.paint.to, true)} 칠하기` : "";
+  return `${base}${paint}${end}${r.skipDayOff ? " · DAY OFF 빼고" : ""}${r.paused ? " · 멈춤" : ""}`;
 }
 
 // ── 파일 ─────────────────────────────────────────────
@@ -169,7 +180,16 @@ export function decodeRule(v: unknown): RepeatRule | null {
     weekdays: Array.isArray(o.weekdays) ? o.weekdays.filter((x): x is number => typeof x === "number" && x >= 0 && x <= 6) : [],
     monthly, start, end, skipDayOff: o.skipDayOff === true, paused: o.paused === true,
     exceptions: Array.isArray(o.exceptions) ? o.exceptions.filter((x): x is string => typeof x === "string") : [],
+    paint: decodePaint(o.paint),
+    paintedDays: Array.isArray(o.paintedDays) ? o.paintedDays.filter((x): x is string => typeof x === "string") : [],
   };
+}
+
+function decodePaint(v: unknown): RepeatRule["paint"] {
+  const o = (v && typeof v === "object" ? v : null) as Raw | null;
+  if (!o || typeof o.from !== "number" || typeof o.to !== "number") return null;
+  const a = Math.max(0, Math.min(143, Math.floor(o.from))), b = Math.max(0, Math.min(143, Math.floor(o.to)));
+  return { from: Math.min(a, b), to: Math.max(a, b) };
 }
 
 export function encodeRule(r: RepeatRule): Raw {
@@ -180,5 +200,7 @@ export function encodeRule(r: RepeatRule): Raw {
   if (r.skipDayOff) o.skipDayOff = true;
   if (r.paused) o.paused = true;
   if (r.exceptions.length) o.exceptions = r.exceptions;
+  if (r.paint) o.paint = { from: r.paint.from, to: r.paint.to };
+  if (r.paintedDays.length) o.paintedDays = r.paintedDays;
   return o;
 }

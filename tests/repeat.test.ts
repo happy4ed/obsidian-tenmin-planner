@@ -79,3 +79,33 @@ describe("반복 할 일 만들기", () => {
     expect(back.prefs.repeats[0]).toMatchObject({ text: "보고", freq: "monthly", monthly: "last" });
   });
 });
+
+describe("타임테이블 반복 칠하기", () => {
+  const wrap = approxWrap();
+  it("빈 칸만 칠하고, 지우개로 지운 날은 다시 칠하지 않으며, 할 일 없이도 된다", () => {
+    const p = new Planner(emptyData(), null, wrap);
+    p.addRepeat({ ...newRule("x", D(10, 14), "", 1), freq: "weekdays", weekdays: [2], paint: { from: 18, to: 26 } });
+    p.editDay(D(10, 14), (r) => { r.slots[20] = 3; }); // 이미 칠한 칸
+    expect(p.applyRepeats([D(10, 14)])).toBe(true);
+    const s = p.day(D(10, 14)).slots;
+    expect(s.slice(18, 27)).toEqual([1, 1, 3, 1, 1, 1, 1, 1, 1]);
+    expect(p.day(D(10, 14)).tasks).toHaveLength(0);
+    expect(p.minutes(D(10, 14), 1)).toBe(80);
+    // 지우개로 지움 → 다시 칠하지 않는다
+    p.editDay(D(10, 14), (r) => { for (let i = 18; i <= 26; i++) r.slots[i] = -1; });
+    expect(p.applyRepeats([D(10, 14)])).toBe(false);
+    // 다음 주 수요일에는 칠한다, 목요일에는 안 한다
+    p.applyRepeats([D(10, 21), D(10, 22)]);
+    expect(p.day(D(10, 21)).slots[18]).toBe(1);
+    expect(p.day(D(10, 22)).slots[18]).toBe(-1);
+    expect(describeRule(p.repeats[0])).toBe("매주 수 · 09:00–07:30 칠하기".replace("07:30", "10:30"));
+  });
+  it("반복 지우기 (앞으로도) 는 미래에 칠한 칸도 지운다", () => {
+    const p = new Planner(emptyData(), null, wrap);
+    p.addRepeat({ ...newRule("x", D(1, 1, 2099), "회의", 1), paint: { from: 0, to: 2 } });
+    p.applyRepeats([D(1, 1, 2099)]);
+    expect(p.day(D(1, 1, 2099)).slots.slice(0, 3)).toEqual([1, 1, 1]);
+    p.removeRepeat(p.repeats[0].id, true);
+    expect(p.data.days["2099-01-01"]).toBeUndefined();
+  });
+});
