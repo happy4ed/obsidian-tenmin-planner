@@ -120,7 +120,8 @@ function Goal({ start, goal }: { start: Date; goal: string }) {
   return (
     <div class="tmp-wk-goal-view" style={{ ...place(rect), fontSize: `${30 * TEXT_SCALE}px`, color: goal ? Ink.text : Ink.faint }}
       onClick={() => c.setEditing(k)}>
-      {goal ? <span class="tmp-wk-goal-mark">{goal}</span> : c.printing ? "" : "이번 주 목표"}
+      {goal ? <span class="tmp-wk-goal-mark" style={{ color: Ink.text, ["--mark" as never]: conceptOf(c.planner.data.prefs.defaultTheme).accent }}>{goal}</span>
+        : c.printing ? "" : "이번 주 목표"}
     </div>
   );
 }

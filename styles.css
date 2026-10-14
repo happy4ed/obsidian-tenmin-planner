@@ -128,7 +128,11 @@
 .tmp-wk-sum { display: flex; align-items: center; justify-content: flex-end; padding-right: 8px; font-size: 34px; font-weight: 700; pointer-events: none; }
 .tmp-wk-locked { background: rgba(252, 251, 247, .78); }
 .tmp-wk-goal-view { display: flex; align-items: center; cursor: text; white-space: nowrap; overflow: hidden; }
-.tmp-wk-goal-mark { padding: 0 10px; border-left: 3px solid #E0474C; border-top: 3px solid #E0474C; }
+.tmp-wk-goal-mark { position: relative; padding: 2px 14px; }
+/* 글 폭에 맞춘 ┌ ┘ 꺾쇠: 앞 위 모서리 · 뒤 아래 모서리에만 짧게 (기본 컬러) */
+.tmp-wk-goal-mark::before, .tmp-wk-goal-mark::after { content: ""; position: absolute; width: 9px; height: 9px; pointer-events: none; }
+.tmp-wk-goal-mark::before { left: 0; top: 0; border-left: 2.5px solid var(--mark, #E0474C); border-top: 2.5px solid var(--mark, #E0474C); }
+.tmp-wk-goal-mark::after { right: 0; bottom: 0; border-right: 2.5px solid var(--mark, #E0474C); border-bottom: 2.5px solid var(--mark, #E0474C); }
 .tmp-wk-stars { display: flex; align-items: center; justify-content: center; gap: 4px; }
 .tmp-wk-stars button { padding: 0; font-size: 26px; line-height: 1; color: #C9C5CB; background: transparent !important;
   border: none; box-shadow: none !important; cursor: pointer; }
