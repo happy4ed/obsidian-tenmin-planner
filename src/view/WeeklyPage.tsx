@@ -169,7 +169,7 @@ function DayColumn({ i, date, onOpenDay }: { i: number; date: Date; onOpenDay: (
           : (inBook && <div key={`e${k}`} class="tmp-hit" style={place({ x: textX - 8, y: dayHeadH + k * taskH, w: textEnd - textX + 8, h: taskH })}
             onClick={() => c.setEditing(taskKey(p.addTaskAfterLast(date)), date)} />);
       })}
-      <Timetable date={date} slots={day.slots} notes={day.notes} accent={concept.accent}
+      <Timetable date={date} slots={day.slots} notes={day.notes} events={day.events} accent={concept.accent}
         x={cellsX} y={ttTop} cellW={cellW} rowH={rowH} disabled={!inBook} />
       {minutes > 0 && (
         <>

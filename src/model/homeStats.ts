@@ -111,10 +111,23 @@ export function makeHomeStats(data: PlannerData, now: Date): HomeStats {
     const o = ordinal(key);
     if (o == null) continue;
     perCat.fill(0);
-    let painted = 0;
-    for (const v of day.slots) { const i = slot(v); if (i >= 0) { perCat[i]++; painted++; } }
-    let minutes = 0;
-    for (let i = 0; i < nc; i++) if (counted[i]) minutes += perCat[i] * 10;
+    // 형광펜별 칸 수는 일정에서 (겹친 다른 형광펜도 각자 센다), 칠한 칸 · 합계는 겹친 시간을 한 번만
+    const cellsByCat = new Map<number, Set<number>>();
+    for (const e of day.events) {
+      if (e.cat == null || slot(e.cat) < 0) continue;
+      const set = cellsByCat.get(e.cat) ?? new Set<number>();
+      for (let k = e.from; k <= e.to; k++) set.add(k);
+      cellsByCat.set(e.cat, set);
+    }
+    if (!day.events.length) for (let k = 0; k < day.slots.length; k++) { const v = day.slots[k]; if (slot(v) >= 0) { const set = cellsByCat.get(v) ?? new Set<number>(); set.add(k); cellsByCat.set(v, set); } }
+    const all = new Set<number>(), countedCells = new Set<number>();
+    for (const [cat, set] of cellsByCat) {
+      const i = slot(cat);
+      perCat[i] = set.size;
+      for (const k of set) { all.add(k); if (counted[i]) countedCells.add(k); }
+    }
+    const painted = all.size;
+    const minutes = countedCells.size * 10;
     const recorded = painted > 0;
     if (day.dayOff && o <= t) offPast.add(o);
     if (recorded) {

@@ -33,7 +33,7 @@ export function grouped(tasks: PlanTask[]): PlanTask[] {
 }
 
 export function hasRecord(d: DayRecord): boolean {
-  return !(d.tasks.length === 0 && d.slots.every((s) => s < 0) && d.comment === ""
+  return !(d.tasks.length === 0 && d.slots.every((s) => s < 0) && d.events.length === 0 && d.comment === ""
     && d.memos.every((m) => m === "") && d.memoTags.every((m) => m === "") && d.theme == null && d.notes.length === 0);
 }
 

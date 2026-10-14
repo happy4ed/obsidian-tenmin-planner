@@ -37,7 +37,7 @@ export function DailyPage() {
       <TotalTime minutes={p.minutes(date)} color={concept.accent} />
       <Tasks day={day} accent={concept.accent} />
       <Memos memo={memo} />
-      <Timetable date={date} slots={day.slots} notes={day.notes} accent={concept.accent}
+      <Timetable date={date} slots={day.slots} notes={day.notes} events={day.events} accent={concept.accent}
         x={F.slotsLeft} y={F.gridTop} cellW={F.cell} rowH={F.hourPitch} />
       {!c.printing && <Corners />}
     </div>

@@ -4,6 +4,7 @@
 import { UUID, URL_NAMESPACE, uuidV5 } from "./uuid";
 import { fromISO, toISO } from "./dates";
 import { decodeRule, encodeRule, RepeatRule } from "./repeat";
+import { decodeEvent, encodeEvent, TimeEvent } from "./events";
 
 export enum Mark { none = 0, done = 1, partial = 2, missed = 3, moved = 4 }
 export const nextMark = (m: Mark): Mark => ((m + 1) % 5) as Mark;
@@ -51,6 +52,8 @@ export interface DayRecord {
   notes: TimeNote[];
   ddays: DDay[];
   dayOff: boolean;
+  /** 타임테이블 일정 (원본과 갈라선 부분 — 칸 색 slots 는 여기서 계산한다) */
+  events: TimeEvent[];
 }
 
 export interface WeekRecord { goal: string; review: string; stars: number; }
@@ -107,7 +110,7 @@ export const defaultCategories = (): Category[] => [
 export const emptyDay = (): DayRecord => ({
   tasks: [], slots: Array(SLOT_COUNT).fill(-1), comment: "",
   memoTags: Array(MEMO_COUNT).fill(""), memos: Array(MEMO_COUNT).fill(""),
-  theme: null, notes: [], ddays: [], dayOff: false,
+  theme: null, notes: [], ddays: [], dayOff: false, events: [],
 });
 
 export const emptyWeek = (): WeekRecord => ({ goal: "", review: "", stars: 0 });
@@ -180,6 +183,7 @@ export function decodeDay(v: unknown): DayRecord {
     notes: arr(r.notes).map(decodeNote),
     ddays: arr(r.ddays).map(decodeDDay),
     dayOff: r.dayOff === true,
+    events: arr(r.events).map(decodeEvent).filter((x): x is TimeEvent => x != null),
   };
 }
 
@@ -281,6 +285,7 @@ export function encodeDay(d: DayRecord): Raw {
   // D-day 를 붙인 날, 쉬는 날만 적는다 (원본과 같은 모양)
   if (d.ddays.length) o.ddays = d.ddays.map(encDDay);
   if (d.dayOff) o.dayOff = true;
+  if (d.events.length) o.events = d.events.map(encodeEvent);
   return o;
 }
 

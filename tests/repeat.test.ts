@@ -82,15 +82,18 @@ describe("반복 할 일 만들기", () => {
 
 describe("타임테이블 반복 칠하기", () => {
   const wrap = approxWrap();
-  it("빈 칸만 칠하고, 지우개로 지운 날은 다시 칠하지 않으며, 할 일 없이도 된다", () => {
+  it("겹치는 일정으로 들어가고, 지우개로 지운 날은 다시 만들지 않으며, 할 일 없이도 된다", () => {
     const p = new Planner(emptyData(), null, wrap);
     p.addRepeat({ ...newRule("x", D(10, 14), "", 1), freq: "weekdays", weekdays: [2], paint: { from: 18, to: 26 } });
     p.editDay(D(10, 14), (r) => { r.slots[20] = 3; }); // 이미 칠한 칸
     expect(p.applyRepeats([D(10, 14)])).toBe(true);
     const s = p.day(D(10, 14)).slots;
-    expect(s.slice(18, 27)).toEqual([1, 1, 3, 1, 1, 1, 1, 1, 1]);
+    // 이미 있던 일정(3)은 그대로 두고 그 위에 겹친다 (칸 색은 맨 위 = 나중 일정)
+    expect(p.day(D(10, 14)).events.map((e) => [e.cat, e.from, e.to])).toEqual([[3, 20, 20], [1, 18, 26]]);
+    expect(s.slice(18, 27)).toEqual([1, 1, 1, 1, 1, 1, 1, 1, 1]);
     expect(p.day(D(10, 14)).tasks).toHaveLength(0);
-    expect(p.minutes(D(10, 14), 1)).toBe(80);
+    expect(p.minutes(D(10, 14), 1)).toBe(90);
+    expect(p.minutes(D(10, 14), 3)).toBe(10);
     // 지우개로 지움 → 다시 칠하지 않는다
     p.editDay(D(10, 14), (r) => { for (let i = 18; i <= 26; i++) r.slots[i] = -1; });
     expect(p.applyRepeats([D(10, 14)])).toBe(false);

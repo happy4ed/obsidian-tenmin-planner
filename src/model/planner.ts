@@ -9,7 +9,13 @@ import {
 import { assignTaskRows, freeTaskRow, hasRecord, insertCarried, insertTask, isEmptyDay, joinCategoryGroup, lastTaskLine, taskRowsReady } from "./day";
 import { Wrap } from "./ruled";
 import { newPenName, suggestPenColor } from "./pens";
-import { occurrenceId, occursOn, RepeatRule } from "./repeat";
+import { occurrenceId, occursOn, repeatEventId, RepeatRule } from "./repeat";
+import { countedMinutes, eventsFromSlots, minutesByCat, normEvent, slotsFromEvents, subtractRange, TimeEvent } from "./events";
+
+/** 칸 색만 있고 일정이 없는 날 → 일정으로 */
+function migrateSlots(r: DayRecord): void {
+  if (!r.events.length && r.slots.some((s) => s >= 0)) r.events = eventsFromSlots(r.slots, newUUID);
+}
 import { carryTaskId, newUUID, sameUUID, UUID } from "./uuid";
 
 const clone = <T>(v: T): T => structuredClone(v);
@@ -57,7 +63,10 @@ export class Planner {
     public book: BookInfo | null,
     private wrap: Wrap,
     public onChange: () => void = () => {},
-  ) {}
+  ) {
+    // 예전 기록 (칸 색만 있는 날): 이어진 같은 색 덩어리를 일정 하나씩으로 옮긴다 (칸 색은 그대로)
+    for (const r of Object.values(this.data.days)) migrateSlots(r);
+  }
 
   // ── 날 ──────────────────────────────────────────────
 
@@ -72,8 +81,12 @@ export class Planner {
     const k = Dates.key(d);
     const r = clone(this.data.days[k] ?? emptyDay());
     if (!taskRowsReady(r)) assignTaskRows(r, this.wrap);
+    const evBefore = JSON.stringify(r.events), slBefore = r.slots.join(",");
     f(r);
     if (!taskRowsReady(r)) assignTaskRows(r, this.wrap);
+    // 일정이 바뀌면 칸 색을 다시 계산하고, 칸 색만 직접 바뀌었으면 (예전 방식) 일정을 칸 색에서 다시 만든다
+    if (JSON.stringify(r.events) !== evBefore) r.slots = slotsFromEvents(r.events);
+    else if (r.slots.join(",") !== slBefore) r.events = eventsFromSlots(r.slots, newUUID);
     if (isEmptyDay(r)) delete this.data.days[k];
     else this.data.days[k] = r;
     this.onChange();
@@ -232,7 +245,11 @@ export class Planner {
         const painted = rule.paint && rule.cat != null && rule.paintedDays.includes(k);
         if (!hasTask && !painted) continue;
         r.tasks = r.tasks.filter((t) => !(sameUUID(t.id, occ) && t.mark === Mark.none));
-        if (painted) for (let i = rule.paint!.from; i <= rule.paint!.to; i++) if (r.slots[i] === rule.cat) r.slots[i] = -1;
+        if (painted) {
+          const eid = repeatEventId(rule, d);
+          r.events = r.events.filter((e) => !sameUUID(e.id, eid));
+          r.slots = slotsFromEvents(r.events);
+        }
         if (isEmptyDay(r)) delete this.data.days[k];
       }
     }
@@ -296,7 +313,10 @@ export class Planner {
           insertCarried(r, { id: occurrenceId(rule, d), text: rule.text, mark: Mark.none, cat: rule.cat, carriedFrom: null, row: null }, this.wrap);
         }
         for (const rule of paints) {
-          for (let i = rule.paint!.from; i <= rule.paint!.to; i++) if (r.slots[i] < 0) r.slots[i] = rule.cat!;
+          const id = repeatEventId(rule, d);
+          if (!r.events.some((e) => sameUUID(e.id, id))) {
+            r.events.push(normEvent({ id, from: rule.paint!.from, to: rule.paint!.to, cat: rule.cat, title: rule.text, note: "", place: "" }));
+          }
         }
       });
       made = true;
@@ -337,12 +357,40 @@ export class Planner {
     this.editDay(d, (r) => { r.slots = slots.slice(0, r.slots.length); });
   }
 
-  /** TOTAL TIME (분). cat 을 주면 그 형광펜만 */
+  /** TOTAL TIME (분). cat 을 주면 그 형광펜만. 겹친 시간은 한 번만 센다 */
   minutes(d: Date, cat: number | null = null): number {
-    const slots = this.day(d).slots;
-    if (cat != null) return slots.filter((s) => s === cat).length * 10;
+    const ev = this.day(d).events;
+    if (cat != null) return minutesByCat(ev).get(cat) ?? 0;
     const counted = new Set(this.data.prefs.categories.filter((c) => c.counts).map((c) => c.id));
-    return slots.filter((s) => counted.has(s)).length * 10;
+    return countedMinutes(ev, counted);
+  }
+
+  // ── 일정 (타임테이블) ─────────────────────────────────
+
+  addEvent(d: Date, e: Omit<TimeEvent, "id" | "title" | "note" | "place"> & Partial<TimeEvent>): UUID {
+    const ev = normEvent({ title: "", note: "", place: "", ...e, id: e.id ?? newUUID() });
+    this.editDay(d, (r) => r.events.push(ev));
+    return ev.id;
+  }
+
+  updateEvent(d: Date, id: UUID, f: (e: TimeEvent) => void): void {
+    this.editDay(d, (r) => {
+      const i = r.events.findIndex((x) => sameUUID(x.id, id));
+      if (i < 0) return;
+      const e = { ...r.events[i] };
+      f(e);
+      r.events[i] = normEvent(e);
+    });
+  }
+
+  removeEvent(d: Date, id: UUID): void {
+    this.editDay(d, (r) => { r.events = r.events.filter((x) => !sameUUID(x.id, id)); });
+  }
+
+  /** 지우개: 그 범위를 일정에서 잘라낸다 */
+  eraseRange(d: Date, a: number, b: number): void {
+    if (!this.day(d).events.some((e) => e.to >= Math.min(a, b) && e.from <= Math.max(a, b))) return;
+    this.editDay(d, (r) => { r.events = subtractRange(r.events, a, b, newUUID); });
   }
 
   addNote(d: Date, note: Omit<TimeNote, "id">): UUID {
@@ -473,12 +521,12 @@ export class Planner {
 
   /** 지우기 전에 알려 줄 것: 그 펜으로 칠한 시간(분)과 분류한 할 일 수 (모든 날) */
   categoryUsage(id: number): { minutes: number; tasks: number } {
-    let cells = 0, tasks = 0;
+    let minutes = 0, tasks = 0;
     for (const r of Object.values(this.data.days)) {
-      cells += r.slots.filter((s) => s === id).length;
+      minutes += minutesByCat(r.events).get(id) ?? 0;
       tasks += r.tasks.filter((t) => t.cat === id).length;
     }
-    return { minutes: cells * 10, tasks };
+    return { minutes, tasks };
   }
 
   /** 형광펜을 지운다 (최소 1개는 남긴다). 그 펜으로 칠한 칸은 빈 칸, 그 색 할 일은 분류 없음으로 모든 날에서 정리 */
@@ -486,8 +534,9 @@ export class Planner {
     if (this.categories.length <= 1) return;
     this.data.prefs.categories = this.data.prefs.categories.filter((c) => c.id !== id);
     for (const [k, r] of Object.entries(this.data.days)) {
-      if (!r.slots.includes(id) && !r.tasks.some((t) => t.cat === id)) continue;
-      r.slots = r.slots.map((s) => (s === id ? -1 : s));
+      if (!r.events.some((e) => e.cat === id) && !r.slots.includes(id) && !r.tasks.some((t) => t.cat === id)) continue;
+      r.events = r.events.filter((e) => e.cat !== id);
+      r.slots = slotsFromEvents(r.events);
       r.tasks = r.tasks.map((t) => (t.cat === id ? { ...t, cat: null } : t));
       if (isEmptyDay(r)) delete this.data.days[k];
     }

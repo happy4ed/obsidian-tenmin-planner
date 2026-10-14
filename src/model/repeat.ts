@@ -128,6 +128,8 @@ export function nextOccurrences(r: RepeatRule, from: Date, k = 5, horizonDays = 
 
 /** 그날 만든 할 일의 id (같은 규칙 · 같은 날이면 늘 같다) */
 export const occurrenceId = (r: RepeatRule, d: Date) => uuidV5(r.id, `repeat|${Dates.key(d)}`);
+/** 그날 만든 타임테이블 일정의 id */
+export const repeatEventId = (r: RepeatRule, d: Date) => uuidV5(r.id, `paint|${Dates.key(d)}`);
 
 /** "매주 화 · 목", "2주마다 월요일", "매월 둘째 화요일" … */
 export function describeRule(r: RepeatRule): string {

@@ -252,3 +252,24 @@
 .tmp-concept-total .u:last-child { margin-right: 0; }
 .tmp-concept-name { font-size: 12px; color: #9A96A0; }
 .tmp-keys { margin: 4px 0 12px; padding-left: 18px; font-size: var(--font-ui-small); line-height: 1.9; }
+
+/* 일정 (타임테이블) */
+.tmp-ev { position: absolute; opacity: .55; mix-blend-mode: multiply; border-radius: 3px; overflow: hidden; cursor: pointer; }
+/* 일정마다 시작 · 끝을 진하게: 연달아 있는 같은 색 일정도 나뉘어 보인다 */
+.tmp-ev.is-first { border-left: 3px solid var(--ev); filter: saturate(1.2); box-shadow: inset 3px 0 0 rgba(0, 0, 0, .28); }
+.tmp-ev.is-last { box-shadow: inset -2px 0 0 rgba(0, 0, 0, .12); }
+.tmp-ev.is-first.is-last { box-shadow: inset 3px 0 0 rgba(0, 0, 0, .28), inset -2px 0 0 rgba(0, 0, 0, .12); }
+.tmp-ev.is-selected { opacity: .78; outline: 2px solid #2B2B2F; outline-offset: -1px; }
+.tmp-ev-title { position: absolute; left: 6px; right: 4px; top: 50%; transform: translateY(-50%); color: #2B2B2F; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; mix-blend-mode: normal; pointer-events: none; font-weight: 600; }
+.tmp-timetable.is-text .tmp-ev, .tmp-timetable.is-meal .tmp-ev { pointer-events: none; }
+.tmp-ev-preview { position: absolute; opacity: .4; border-radius: 3px; pointer-events: none; }
+.tmp-ev-preview.is-erase { border: 2px dashed #9A96A0; opacity: 1; }
+.tmp-handle { position: absolute; z-index: 5; background: #FCFBF7; border: 2.5px solid; border-radius: 50%; cursor: ew-resize; touch-action: none; }
+.tmp-bubble { position: absolute; z-index: 10; background: var(--background-primary, #fff); color: var(--text-normal, #34333A);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .18); line-height: 1.45; transform: translateY(-100%); pointer-events: auto; }
+.tmp-bubble.is-below { transform: none; }
+.tmp-bubble .t { font-weight: 700; word-break: keep-all; overflow-wrap: anywhere; }
+.tmp-bubble .m { color: var(--text-muted, #9A96A0); }
+.tmp-bubble .n { margin-top: 4px; white-space: pre-wrap; word-break: keep-all; overflow-wrap: anywhere; }
+.tmp-event-note { width: 100%; min-width: 220px; }

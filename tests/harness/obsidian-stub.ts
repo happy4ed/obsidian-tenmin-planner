@@ -104,7 +104,7 @@ class ButtonC extends Comp {
   setIcon(i: string) { this.buttonEl.textContent = i === "minus-circle" ? "−" : i; return this; }
   setTooltip(t: string) { this.buttonEl.title = t; return this; }
   setDisabled(d: boolean) { this.buttonEl.disabled = d; return this; }
-  onClick(f: Fn) { this.buttonEl.onclick = () => f(); return this; }
+  onClick(f: Fn) { this.buttonEl.onclick = (e) => f(e); return this; }
 }
 class ColorC extends TextC { constructor(p: HTMLElement) { super(p); this.inputEl.type = "color"; } }
 
