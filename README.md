@@ -2,6 +2,19 @@
 
 10분 단위 종이 플래너를 Obsidian 안에서 씁니다. 일간 · 주간 · 홈, 형광펜 타임테이블, ○ △ × → 체크와 다음 날로 미루기.
 
+## 설치
+
+### Obsidian 안에서 바로 (BRAT)
+1. 설정 → 커뮤니티 플러그인 → 탐색에서 **BRAT** (Obsidian42 - BRAT) 을 설치하고 켭니다.
+2. 명령 팔레트(Ctrl/Cmd+P) → **BRAT: Add a beta plugin for testing** → `happy4ed/obsidian-tenmin-planner` 입력 → 추가.
+3. 커뮤니티 플러그인 목록에서 **10분 플래너** 를 켭니다.
+4. 왼쪽 리본의 달력 아이콘, 또는 명령 팔레트 "10분 플래너: 플래너 열기".
+
+새 버전이 나오면 BRAT 이 알아서 받아 옵니다 (또는 "BRAT: Check for updates to all beta plugins").
+
+### 손으로
+[릴리스](https://github.com/happy4ed/obsidian-tenmin-planner/releases) 의 `tenmin-planner-<버전>.zip` 을 풀어 저장소의 `.obsidian/plugins/` 안에 넣고 켭니다.
+
 ## 저장
 저장소(vault) 안 `Planner/` 폴더에 `library.json` 과 `books/<ID>.json` 으로 저장합니다.
 Spiralday 1.1.0 계열과 같은 JSON 형식이라 Obsidian Sync · iCloud 로 기기끼리 맞춰집니다.
