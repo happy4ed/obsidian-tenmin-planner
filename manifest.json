@@ -1,7 +1,7 @@
 {
   "id": "tenmin-planner",
   "name": "10분 플래너",
-  "version": "0.8.5",
+  "version": "0.9.0",
   "minAppVersion": "1.5.0",
   "description": "10분 단위 종이 플래너 — 일간 · 주간 · 홈(통계), 형광펜 타임테이블, 미룬 일 넘기기, 반복 할 일, PDF.",
   "author": "happy4ed",

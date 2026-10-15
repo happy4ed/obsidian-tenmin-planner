@@ -347,6 +347,16 @@ function Planner({ plugin, view }: { plugin: TenMinPlanner; view: PlannerView })
     go(new Date());
   };
 
+  // 노트 카드의 「일간 · 주간 열기」: 그린 뒤 그 날로
+  useEffect(() => {
+    const o = plugin.pendingOpen;
+    if (!o) return;
+    plugin.pendingOpen = null;
+    setFront(null);
+    setKind(o.kind);
+    go(o.date);
+  });
+
   // 설정에서 기간을 바꿔 보던 날이 밖으로 나가면 가장 가까운 장으로 (앞 장을 보던 중이면 그대로)
   useEffect(() => {
     if (p.book && !bookContains(p.book, dateRef.current)) go(dateRef.current);

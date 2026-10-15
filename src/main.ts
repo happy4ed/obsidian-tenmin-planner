@@ -1,4 +1,6 @@
-import { App, Notice, Plugin, PluginSettingTab, Setting, TAbstractFile, TFile, normalizePath } from "obsidian";
+import { App, Notice, Plugin, PluginSettingTab, Setting, TAbstractFile, TFile, TFolder, WorkspaceLeaf, normalizePath } from "obsidian";
+import { LINK_EXT, LINK_VIEW, Links, PlannerLinkView } from "./links";
+import { DayCard, parseCardArgs } from "./view/dayCard";
 import { PdfModal } from "./pdf/PdfModal";
 import { ImportModal } from "./storage/ImportModal";
 import { backupFileName, backupText, firstRecordedDay, nameFromBackup, parseBackup, recordSummary } from "./storage/backup";
@@ -7,7 +9,7 @@ import { Planner } from "./model/planner";
 import { Wrap } from "./model/ruled";
 import { canvasWrap } from "./canvasWrap";
 import { defaultZooms, PlannerView, VIEW_TYPE, Zooms } from "./view/PlannerView";
-import { UUID } from "./model/uuid";
+import { sameUUID, UUID } from "./model/uuid";
 import { BookModal, ConfirmModal } from "./view/modals";
 import { repeatRow, RepeatEditModal } from "./view/repeatModals";
 import { newRule } from "./model/repeat";
@@ -15,10 +17,11 @@ import * as Dates from "./model/dates";
 import { conceptOf } from "./view/theme";
 import { concepts } from "./view/theme";
 
-interface Settings { folder: string; zooms: Zooms; zoomVersion: number; }
+/** linked: 바로가기를 한 번 만든 책 id (지운 바로가기는 다시 만들지 않는다) */
+interface Settings { folder: string; zooms: Zooms; zoomVersion: number; linked: string[]; }
 /** 크기 설정 형식이 바뀌면 올린다 (0.2.1: "한 장" 기본값으로 다시 시작) */
 const ZOOM_VERSION = 2;
-const DEFAULTS: Settings = { folder: "Planner", zooms: defaultZooms(), zoomVersion: ZOOM_VERSION };
+const DEFAULTS: Settings = { folder: "Planner", zooms: defaultZooms(), zoomVersion: ZOOM_VERSION, linked: [] };
 const SAVE_DELAY_MS = 600;
 /** 쓰는 칸을 마지막으로 고친 뒤 이 시간 안이면 밖에서 바뀐 파일을 바로 넣지 않는다 (원본 editingGrace) */
 const EDITING_GRACE_MS = 5000;
@@ -26,7 +29,10 @@ const EDITING_GRACE_MS = 5000;
 export default class TenMinPlanner extends Plugin {
   settings: Settings = { ...DEFAULTS };
   store!: BookStore;
+  links!: Links;
   planner: Planner | null = null;
+  /** 노트 카드에서 연 날 (플래너 화면이 그린 뒤 그 날로 간다) */
+  pendingOpen: { date: Date; kind: "daily" | "weekly" } | null = null;
   loadError: string | null = null;
   wrap!: Wrap;
   saveTimer: number | null = null;
@@ -39,11 +45,28 @@ export default class TenMinPlanner extends Plugin {
     const saved = (await this.loadData()) ?? {};
     // 예전 크기 설정은 버리고 "한 장" 으로 시작한다 (폰에서 종이가 화면을 넘던 판)
     const zooms: Zooms = saved.zoomVersion === ZOOM_VERSION ? { ...defaultZooms(), ...(saved.zooms ?? {}) } : defaultZooms();
-    this.settings = { folder: saved.folder ?? DEFAULTS.folder, zooms, zoomVersion: ZOOM_VERSION };
+    this.settings = { folder: saved.folder ?? DEFAULTS.folder, zooms, zoomVersion: ZOOM_VERSION,
+      linked: Array.isArray(saved.linked) ? saved.linked.filter((x: unknown) => typeof x === "string") : [] };
+    this.links = new Links(this.app, this);
     this.addSettingTab(new TenMinSettingTab(this.app, this));
     this.registerView(VIEW_TYPE, (leaf) => new PlannerView(leaf, this));
+    this.registerView(LINK_VIEW, (leaf) => new PlannerLinkView(leaf, this));
+    this.registerExtensions([LINK_EXT], LINK_VIEW);
     this.addRibbonIcon("calendar-clock", "10분 플래너 열기", () => void this.openView());
-    this.app.workspace.onLayoutReady(() => void this.openStore());
+    this.app.workspace.onLayoutReady(() => { if (!this.store && !this.opening) void this.openStore(); });
+
+    // 노트 안 ```tenmin``` → 그날 카드
+    this.registerMarkdownCodeBlockProcessor("tenmin", (src, el, ctx) => {
+      ctx.addChild(new DayCard(el, this, parseCardArgs(src, ctx.sourcePath, new Date())));
+    });
+    // 폴더 오른쪽 클릭 → 새 10분 플래너 (그 폴더에 바로가기)
+    this.registerEvent(this.app.workspace.on("file-menu", (menu, file) => {
+      if (!(file instanceof TFolder)) return;
+      menu.addItem((i) => i.setTitle("새 10분 플래너").setIcon("calendar-clock")
+        .onClick(async () => { await this.ready(); this.newBookDialog(() => void this.openView(), file.path); }));
+    }));
+    this.registerEvent(this.app.vault.on("rename", (f, old) => void this.links.onRename(f, old)));
+    this.registerEvent(this.app.vault.on("delete", (f) => this.links.onDelete(f)));
 
     this.addCommand({ id: "open", name: "플래너 열기", callback: () => void this.openView() });
     this.addCommand({ id: "pdf", name: "PDF로 내보내기…", callback: () => this.openPdfDialog() });
@@ -119,6 +142,7 @@ export default class TenMinPlanner extends Plugin {
   openStore(): Promise<void> {
     if (this.opening) return this.opening;
     this.opening = this.openStoreInner()
+      .then(() => this.links.sync().catch((e: unknown) => console.warn("10분 플래너: 바로가기", e)))
       .catch((e: unknown) => {
         console.error("10분 플래너: 불러오기 실패", e);
         this.planner = null;
@@ -127,6 +151,32 @@ export default class TenMinPlanner extends Plugin {
       })
       .finally(() => { this.opening = null; });
     return this.opening;
+  }
+
+  /** 책장을 다 연 뒤 (화면 준비 → 불러오기). 이미 열었으면 바로 */
+  async ready(): Promise<void> {
+    await new Promise<void>((r) => this.app.workspace.onLayoutReady(() => r()));
+    if (this.opening) await this.opening;
+    else if (!this.store) await this.openStore();
+  }
+
+  /** 바로가기를 연 탭을 그 플래너 화면으로 바꾼다 (플래너 화면은 하나만 둔다) */
+  async openBookIn(leaf: WorkspaceLeaf, id: UUID): Promise<void> {
+    await this.switchBook(id);
+    const others = this.app.workspace.getLeavesOfType(VIEW_TYPE).filter((l) => l !== leaf);
+    await leaf.setViewState({ type: VIEW_TYPE, active: true });
+    for (const l of others) l.detach();
+    this.app.workspace.revealLeaf(leaf);
+  }
+
+  /** 노트 카드에서: 그 플래너의 그 날 (일간 · 주간) 을 연다 */
+  async openAt(id: UUID, date: Date, kind: "daily" | "weekly"): Promise<void> {
+    await this.ready();
+    this.pendingOpen = { date, kind };
+    await this.switchBook(id);
+    if (!this.planner?.book || !sameUUID(this.planner.book.id, id)) { this.pendingOpen = null; return; }
+    await this.openView();
+    this.notify();
   }
 
   private async openStoreInner(): Promise<void> {
@@ -174,21 +224,22 @@ export default class TenMinPlanner extends Plugin {
     this.useBook(id, data);
   }
 
-  async createBook(name: string, start: Date, end: Date | null, cover = 0): Promise<void> {
+  async createBook(name: string, start: Date, end: Date | null, cover = 0, folder?: string): Promise<void> {
     await this.flush();
     const book = await this.store.createBook(name, start, end, cover, this.planner?.data.prefs);
     this.useBook(book.id, (await this.store.loadBook(book.id))!);
+    await this.links.create(book, folder).catch((e: unknown) => console.warn("10분 플래너: 바로가기", e));
   }
 
   /** 새 플래너 창 (제안 이름 "새 플래너" / "새 플래너 n") */
-  newBookDialog(after?: () => void): void {
+  newBookDialog(after?: () => void, folder?: string): void {
     const names = this.store.library.books.map((b) => b.name);
     let name = "새 플래너";
     for (let n = 2; names.includes(name); n++) name = `새 플래너 ${n}`;
     if (names.includes(name)) name = "새 플래너";
     new BookModal(this.app, { title: "새 플래너", ok: "플래너 만들기", name, start: new Date(), end: null, cover: 0,
       warn: (f) => (this.store.library.books.some((b) => b.name === f.name) ? "같은 이름의 플래너가 이미 있어요." : null) },
-    async (f) => { await this.createBook(f.name, f.start, f.end, f.cover); after?.(); }).open();
+    async (f) => { await this.createBook(f.name, f.start, f.end, f.cover, folder); after?.(); }).open();
   }
 
   /** 플래너 고치기: 펼친 책이면 새 기간 밖에 기록한 날이 있을 때 먼저 알린다 (기록은 지워지지 않는다) */
@@ -201,7 +252,12 @@ export default class TenMinPlanner extends Plugin {
         const n = active?.recordedOutside(f.start, f.end) ?? 0;
         return n ? `새 기간 밖에 기록한 날이 ${n}일 있어요. 기록은 지워지지 않지만, 기간을 넓히기 전에는 그 장을 펼칠 수 없어요.` : null;
       } },
-    async (f) => { await this.store.updateBook(id, f); this.notify(); after?.(); }).open();
+    async (f) => {
+      const nb = await this.store.updateBook(id, f);
+      this.notify();
+      if (nb) await this.links.renamed(nb).catch((e: unknown) => console.warn("10분 플래너: 바로가기 이름", e));
+      after?.();
+    }).open();
   }
 
   /** 저장소 폴더 안에 바이너리 파일을 쓰고 (같은 이름이면 덮어쓰기) 그 파일을 돌려준다 */
@@ -252,6 +308,7 @@ export default class TenMinPlanner extends Plugin {
         await this.flush();
         const book = await this.store.createBookFromData(name, firstRecordedDay(data) ?? new Date(), cover, data);
         this.useBook(book.id, (await this.store.loadBook(book.id))!);
+        await this.links.create(book).catch((e: unknown) => console.warn("10분 플래너: 바로가기", e));
         new Notice(`10분 플래너: "${name}" 로 가져왔어요`);
         after?.();
       } catch (e) {
@@ -267,6 +324,7 @@ export default class TenMinPlanner extends Plugin {
     if (wasActive && this.saveTimer != null) { window.clearTimeout(this.saveTimer); this.saveTimer = null; }
     const next = await this.store.deleteBook(id);
     if (!next) { new Notice("10분 플래너: 마지막 한 권은 지울 수 없어요"); return; }
+    await this.links.deleted(id).catch((e: unknown) => console.warn("10분 플래너: 바로가기 지우기", e));
     if (wasActive) {
       const data = await this.store.loadBook(next.id);
       if (data) this.useBook(next.id, data);
@@ -399,6 +457,21 @@ class TenMinSettingTab extends PluginSettingTab {
     new Setting(containerEl).setName("PDF 로 뽑기").setHeading();
     new Setting(containerEl).setDesc("일간 (A4 반쪽 · A4 세로) · 주간 · 홈을 PDF 로. 저장소의 PDF 폴더에 저장하고 바로 열어요.")
       .addButton((b) => b.setButtonText("PDF 로 뽑기…").onClick(() => this.plugin.openPdfDialog()));
+
+    new Setting(containerEl).setName("노트에서 쓰기").setHeading();
+    new Setting(containerEl).setName("바로가기")
+      .setDesc(`노트 목록의 "${book}.tenmin" 을 누르면 이 플래너가 열려요. 지워도 기록은 그대로예요. 폴더를 오른쪽 클릭해 "새 10분 플래너" 로도 만들 수 있어요.`)
+      .addButton((b) => b.setButtonText("바로가기 만들기").onClick(async () => {
+        if (!p.book) return;
+        const f = await this.plugin.links.create(p.book);
+        new Notice(`10분 플래너: ${f.path} 만듦`);
+      }));
+    new Setting(containerEl).setName("노트 안 카드")
+      .setDesc("노트에 ```tenmin``` 코드 블록을 넣으면 그날 기록이 보여요. 줄마다 \"날짜: 2026-10-15\" · \"플래너: 이름\" 을 적을 수 있고, 날짜가 없으면 노트 이름의 날짜(데일리 노트) 또는 오늘이에요.")
+      .addButton((b) => b.setButtonText("블록 복사").onClick(async () => {
+        await navigator.clipboard.writeText("```tenmin\n```\n");
+        new Notice("10분 플래너: 블록을 복사했어요. 노트에 붙여 넣으세요.");
+      }));
 
     new Setting(containerEl).setName("데이터").setHeading();
     const sum = recordSummary(p.data);
