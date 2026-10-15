@@ -1,4 +1,4 @@
-import { App, Notice, Plugin, PluginSettingTab, Setting, TAbstractFile, TFile, TFolder, WorkspaceLeaf, normalizePath } from "obsidian";
+import { App, Editor, Notice, Plugin, PluginSettingTab, Setting, TAbstractFile, TFile, TFolder, WorkspaceLeaf, normalizePath } from "obsidian";
 import { LINK_EXT, LINK_VIEW, Links, PlannerLinkView } from "./links";
 import { DayCard, parseCardArgs } from "./view/dayCard";
 import { PdfModal } from "./pdf/PdfModal";
@@ -59,6 +59,12 @@ export default class TenMinPlanner extends Plugin {
     this.registerMarkdownCodeBlockProcessor("tenmin", (src, el, ctx) => {
       ctx.addChild(new DayCard(el, this, parseCardArgs(src, ctx.sourcePath, new Date())));
     });
+    // 카드 넣기: 폰 자판에 ` 가 없어도 (명령 · 모바일 툴바 · 편집기 메뉴)
+    const insertCard = (editor: Editor) => editor.replaceSelection("```tenmin\n```\n");
+    this.addCommand({ id: "insert-card", name: "노트에 카드 넣기", icon: "calendar-clock", editorCallback: insertCard });
+    this.registerEvent(this.app.workspace.on("editor-menu", (menu, editor) => {
+      menu.addItem((i) => i.setTitle("10분 플래너 카드 넣기").setIcon("calendar-clock").onClick(() => insertCard(editor)));
+    }));
     // 폴더 오른쪽 클릭 → 새 10분 플래너 (그 폴더에 바로가기)
     this.registerEvent(this.app.workspace.on("file-menu", (menu, file) => {
       if (!(file instanceof TFolder)) return;
@@ -467,7 +473,7 @@ class TenMinSettingTab extends PluginSettingTab {
         new Notice(`10분 플래너: ${f.path} 만듦`);
       }));
     new Setting(containerEl).setName("노트 안 카드")
-      .setDesc("노트에 ```tenmin``` 코드 블록을 넣으면 그날 기록이 보여요. 줄마다 \"날짜: 2026-10-15\" · \"플래너: 이름\" 을 적을 수 있고, 날짜가 없으면 노트 이름의 날짜(데일리 노트) 또는 오늘이에요.")
+      .setDesc("편집 중 길게 누르기(오른쪽 클릭) → \"10분 플래너 카드 넣기\", 또는 명령 \"노트에 카드 넣기\" 로 넣어요 (모바일 툴바에 이 명령을 올려 두면 편해요). 넣으면 그날 기록이 보여요. 줄마다 \"날짜: 2026-10-15\" · \"플래너: 이름\" 을 적을 수 있고, 날짜가 없으면 노트 이름의 날짜(데일리 노트) 또는 오늘이에요.")
       .addButton((b) => b.setButtonText("블록 복사").onClick(async () => {
         await navigator.clipboard.writeText("```tenmin\n```\n");
         new Notice("10분 플래너: 블록을 복사했어요. 노트에 붙여 넣으세요.");
